@@ -1,0 +1,44 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.Python
+*.egg-info/
+.pytest_cache/
+
+# Environment variables / secrets
+.env
+.env.local
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Trained models (regenerate via train_model.py; track with Git LFS if needed)
+models/*.pkl
+models/*.joblib
+
+# Vector store persistence (regenerate via rag pipeline)
+vector_db/*
+!vector_db/.gitkeep
+
+# Raw/processed data (can be large; regenerate via ingestion/ETL scripts)
+data/raw/*
+data/processed/*
+data/external/*
+data/reports/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/external/.gitkeep
+!data/reports/.gitkeep
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+*.log
