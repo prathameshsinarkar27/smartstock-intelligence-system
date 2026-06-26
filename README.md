@@ -11,9 +11,10 @@ generation (RAG). It helps users analyze stocks, understand market sentiment,
 evaluate risk, receive AI-generated insights, and interact with company reports
 through natural language.
 
-## Project Status
+## Project Phase Sequence
 
-**Current Phase:** Planning & Architecture
+0. Planning & Architecture
+1. Data Collection
 
 
 ## Folder Structure
