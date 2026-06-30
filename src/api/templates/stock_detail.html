@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block title %}{{ kpis.symbol }} — Company Detail{% endblock %}
+
+{% block extra_head %}
+<script id="ticker-data" type="application/json">[{"symbol": {{ kpis.symbol | tojson }}, "current_price": {{ kpis.current_price | tojson }}, "daily_change_pct": {{ kpis.daily_change_pct | tojson }}}]</script>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+
+    <a href="/" class="btn-terminal-outline mb-3 d-inline-block">&larr; Back to Market Overview</a>
+
+    <!-- Company profile header -->
+    <div class="profile-header">
+        <div>
+            <div class="profile-symbol">{{ kpis.symbol }}</div>
+            <div class="profile-name">{{ kpis.company_name or 'Company name unavailable' }}</div>
+            <div class="mt-2">
+                {% if kpis.sector %}<span class="profile-meta-tag">{{ kpis.sector }}</span>{% endif %}
+                {% if kpis.industry %}<span class="profile-meta-tag">{{ kpis.industry }}</span>{% endif %}
+            </div>
+        </div>
+        <div class="profile-price">
+            {% if kpis.current_price is not none %}
+                <span class="profile-price-value">{{ kpis.current_price | currency }}</span>
+                <span class="profile-price-change {% if kpis.daily_change_pct and kpis.daily_change_pct > 0 %}text-gain{% elif kpis.daily_change_pct and kpis.daily_change_pct < 0 %}text-loss{% else %}text-muted{% endif %}">
+                    {{ kpis.daily_change_pct | percent if kpis.daily_change_pct is not none else 'No prior close yet' }}
+                </span>
+            {% else %}
+                <span class="profile-price-value text-muted">—</span>
+                <span class="profile-price-change text-muted">No price data yet</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- KPI cards: 7 live + 3 reserved placeholders, per the blueprint's
+         "support adding future KPI cards without changing the overall
+         design" requirement. -->
+    <span class="section-label">Key Metrics</span>
+    <div class="kpi-row">
+        <div class="kpi-block">
+            <span class="kpi-label">Current Price</span>
+            <span class="kpi-value">{{ kpis.current_price | currency if kpis.current_price is not none else '—' }}</span>
+        </div>
+        <div class="kpi-block">
+            <span class="kpi-label">Daily Change</span>
+            <span class="kpi-value {% if kpis.daily_change_pct and kpis.daily_change_pct > 0 %}is-gain{% elif kpis.daily_change_pct and kpis.daily_change_pct < 0 %}is-loss{% endif %}">
+                {{ kpis.daily_change_pct | percent if kpis.daily_change_pct is not none else '—' }}
+            </span>
+        </div>
+        <div class="kpi-block">
+            <span class="kpi-label">Market Cap</span>
+            <span class="kpi-value">{{ kpis.market_cap | large_number if kpis.market_cap is not none else '—' }}</span>
+        </div>
+        <div class="kpi-block">
+            <span class="kpi-label">Volume</span>
+            <span class="kpi-value">{{ kpis.volume | volume if kpis.volume is not none else '—' }}</span>
+        </div>
+        <div class="kpi-block">
+            <span class="kpi-label">P/E Ratio</span>
+            <span class="kpi-value">{{ "%.2f"|format(kpis.pe_ratio) if kpis.pe_ratio is not none else '—' }}</span>
+        </div>
+        <div class="kpi-block">
+            <span class="kpi-label">Period High</span>
+            <span class="kpi-value">{{ kpis.period_high | currency if kpis.period_high is not none else '—' }}</span>
+            {% if kpis.period_start_date and kpis.period_end_date %}
+            <span class="kpi-sub" title="True 52-week high requires a full year of loaded history. Shown here over the data actually available.">
+                {{ kpis.period_start_date.strftime('%b %d') }}–{{ kpis.period_end_date.strftime('%b %d, %Y') }}
+            </span>
+            {% endif %}
+        </div>
+        <div class="kpi-block">
+            <span class="kpi-label">Period Low</span>
+            <span class="kpi-value">{{ kpis.period_low | currency if kpis.period_low is not none else '—' }}</span>
+            {% if kpis.period_start_date and kpis.period_end_date %}
+            <span class="kpi-sub" title="True 52-week low requires a full year of loaded history. Shown here over the data actually available.">
+                {{ kpis.period_start_date.strftime('%b %d') }}–{{ kpis.period_end_date.strftime('%b %d, %Y') }}
+            </span>
+            {% endif %}
+        </div>
+
+        <!-- Reserved placeholders — Phases 7, 8, 10 -->
+        <div class="kpi-block is-placeholder">
+            <span class="kpi-label">Sentiment Score</span>
+            <span class="kpi-placeholder-tag">Coming in Phase 7</span>
+        </div>
+        <div class="kpi-block is-placeholder">
+            <span class="kpi-label">ML Risk Score</span>
+            <span class="kpi-placeholder-tag">Coming in Phase 8</span>
+        </div>
+        <div class="kpi-block is-placeholder">
+            <span class="kpi-label">AI Recommendation</span>
+            <span class="kpi-placeholder-tag">Coming in Phase 10</span>
+        </div>
+    </div>
+
+    <!-- Price chart -->
+    <div class="panel">
+        <span class="section-label">Price History</span>
+        {% if price_history %}
+            <div id="price-chart" style="width: 100%; height: 420px;"></div>
+        {% else %}
+            <div class="empty-state">
+                <div class="empty-state-title">No price history loaded yet</div>
+                <div class="empty-state-detail">Run <span class="empty-state-code">python -m src.pipeline.run_pipeline --symbols {{ kpis.symbol }}</span> to fetch price data for this symbol.</div>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Historical price table -->
+    {% if price_history %}
+    <div class="panel">
+        <span class="section-label">Historical Prices</span>
+        <div class="table-responsive" style="max-height: 420px; overflow-y: auto;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th class="text-end">Open</th>
+                        <th class="text-end">High</th>
+                        <th class="text-end">Low</th>
+                        <th class="text-end">Close</th>
+                        <th class="text-end">Volume</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in price_history | reverse %}
+                    <tr>
+                        <td>{{ row.date.strftime('%Y-%m-%d') }}</td>
+                        <td class="text-end">{{ row.open | currency }}</td>
+                        <td class="text-end">{{ row.high | currency }}</td>
+                        <td class="text-end">{{ row.low | currency }}</td>
+                        <td class="text-end">{{ row.close | currency }}</td>
+                        <td class="text-end">{{ row.volume | volume }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Reserved sections for future phases — present now so this page's
+         layout doesn't need to be redesigned when these phases land. -->
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="future-section">
+                <div class="future-section-header">
+                    <span class="future-section-title">Technical Indicators</span>
+                    <span class="phase-tag">Phase 6</span>
+                </div>
+                <div class="future-section-body">RSI, MACD, SMA, EMA, and Bollinger Bands will appear here once the technical analysis engine is built.</div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="future-section">
+                <div class="future-section-header">
+                    <span class="future-section-title">News &amp; Sentiment</span>
+                    <span class="phase-tag">Phase 7</span>
+                </div>
+                <div class="future-section-body">Per-article sentiment classification and an aggregated sentiment score will appear here once the NLP sentiment engine is built.</div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="future-section">
+                <div class="future-section-header">
+                    <span class="future-section-title">ML Predictions</span>
+                    <span class="phase-tag">Phase 8</span>
+                </div>
+                <div class="future-section-body">Trend direction and risk category predictions, with SHAP-based explanations (Phase 9), will appear here once the ML engine is built.</div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="future-section">
+                <div class="future-section-header">
+                    <span class="future-section-title">AI Insights</span>
+                    <span class="phase-tag">Phase 10</span>
+                </div>
+                <div class="future-section-body">A natural-language company summary and risk explanation from the AI research assistant will appear here once the GenAI layer is built.</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if price_history %}
+<script>
+(function () {
+    fetch("/stocks/{{ kpis.symbol }}/chart-data")
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            const trace = {
+                x: data.dates,
+                close: data.close,
+                high: data.high,
+                low: data.low,
+                open: data.open,
+                type: "candlestick",
+                name: "{{ kpis.symbol }}",
+                increasing: { line: { color: "#1FC97D" } },
+                decreasing: { line: { color: "#FF4D5E" } },
+            };
+
+            const layout = {
+                paper_bgcolor: "rgba(0,0,0,0)",
+                plot_bgcolor: "rgba(0,0,0,0)",
+                font: { color: "#7C8694", family: "IBM Plex Mono, monospace", size: 11 },
+                margin: { l: 50, r: 20, t: 10, b: 40 },
+                xaxis: { gridcolor: "#1F2630", rangeslider: { visible: false } },
+                yaxis: { gridcolor: "#1F2630", title: "Price (USD)" },
+            };
+
+            Plotly.newPlot("price-chart", [trace], layout, { responsive: true, displayModeBar: false });
+        });
+})();
+</script>
+{% endif %}
+{% endblock %}

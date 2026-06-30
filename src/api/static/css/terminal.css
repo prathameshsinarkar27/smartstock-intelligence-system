@@ -1,0 +1,601 @@
+/*
+terminal.css
+
+Design system for the SmartStock Intelligence Platform dashboard.
+
+Token system:
+  Color   --bg-void:#0B0E11  --bg-panel:#12161C  --bg-panel-raised:#161B22
+          --line:#1F2630  --text-primary:#E8EAED  --text-muted:#7C8694
+          --accent:#F0A93C  --gain:#1FC97D  --loss:#FF4D5E
+  Type    Display: Archivo (600/700/800) — headers, brand, KPI values
+          Body: Inter (400/500/600) — paragraphs, nav, labels
+          Data: IBM Plex Mono (400/500/600) — all numerals, tickers, tables
+  Layout  Dense grid, 1px hairline dividers, 0 border-radius on data
+          surfaces (cards/tables/panels read as instrument panels, not
+          soft consumer UI). Generous internal padding to keep density
+          readable rather than cramped.
+  Signature  The ticker-strip: a continuously scrolling band of
+             symbol/price/change data across the very top of every page.
+*/
+
+:root {
+    --bg-void: #0B0E11;
+    --bg-panel: #12161C;
+    --bg-panel-raised: #161B22;
+    --line: #1F2630;
+    --text-primary: #E8EAED;
+    --text-muted: #7C8694;
+    --accent: #F0A93C;
+    --accent-dim: #8A6526;
+    --gain: #1FC97D;
+    --loss: #FF4D5E;
+
+    --font-display: 'Archivo', 'Inter', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    background-color: var(--bg-void);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    min-height: 100vh;
+}
+
+a {
+    color: var(--accent);
+    text-decoration: none;
+}
+a:hover {
+    color: #f7c172;
+}
+
+/* Visible keyboard focus everywhere — quality floor, not optional. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+.company-row:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ticker-track {
+        animation: none !important;
+    }
+    * {
+        transition: none !important;
+    }
+}
+
+/* ---------------------------------------------------------------------
+   Ticker strip — signature element
+   --------------------------------------------------------------------- */
+.ticker-strip {
+    background: #000000;
+    border-bottom: 1px solid var(--line);
+    overflow: hidden;
+    white-space: nowrap;
+    padding: 6px 0;
+}
+
+.ticker-track {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    letter-spacing: 0.02em;
+    animation: ticker-scroll 40s linear infinite;
+    padding-left: 100%;
+}
+
+.ticker-empty {
+    color: var(--text-muted);
+    padding: 0 2rem;
+}
+
+.ticker-item {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 1.5rem;
+    border-right: 1px solid var(--line);
+}
+
+.ticker-symbol {
+    color: var(--text-primary);
+    font-weight: 600;
+    margin-right: 0.5rem;
+}
+
+.ticker-price {
+    color: var(--text-muted);
+    margin-right: 0.5rem;
+}
+
+.ticker-change.is-gain { color: var(--gain); }
+.ticker-change.is-loss { color: var(--loss); }
+.ticker-change.is-flat { color: var(--text-muted); }
+
+@keyframes ticker-scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(-100%); }
+}
+
+/* ---------------------------------------------------------------------
+   Navigation
+   --------------------------------------------------------------------- */
+.app-navbar {
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--line);
+    padding: 0.9rem 0;
+}
+
+.app-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.brand-mark {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 0.95rem;
+    color: var(--bg-void);
+    background: var(--accent);
+    padding: 0.3rem 0.5rem;
+    line-height: 1;
+    letter-spacing: 0.02em;
+}
+
+.brand-text {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: var(--text-primary);
+    letter-spacing: 0.01em;
+}
+
+.brand-text-accent {
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.app-nav .nav-link {
+    font-family: var(--font-body);
+    font-weight: 500;
+    font-size: 0.92rem;
+    color: var(--text-muted);
+    padding: 0.5rem 1rem;
+}
+
+.app-nav .nav-link:hover {
+    color: var(--text-primary);
+}
+
+.app-nav .nav-link.disabled {
+    color: #4A5260;
+}
+
+.phase-tag {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--accent-dim);
+    border: 1px solid var(--accent-dim);
+    padding: 0.1rem 0.35rem;
+    margin-left: 0.4rem;
+    vertical-align: middle;
+}
+
+/* ---------------------------------------------------------------------
+   Layout
+   --------------------------------------------------------------------- */
+.app-main {
+    padding: 1.75rem;
+    max-width: 1480px;
+    margin: 0 auto;
+}
+
+.app-footer {
+    border-top: 1px solid var(--line);
+    padding: 1.25rem 0;
+    margin-top: 2rem;
+}
+
+.footer-text {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.section-label {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 0.6rem;
+    display: block;
+}
+
+.section-heading {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.15rem;
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+}
+
+.panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--line);
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.panel-flush {
+    padding: 0;
+}
+
+/* ---------------------------------------------------------------------
+   KPI stat blocks
+   --------------------------------------------------------------------- */
+.kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    margin-bottom: 1.5rem;
+}
+
+.kpi-block {
+    background: var(--bg-panel);
+    padding: 1rem 1.1rem;
+    position: relative;
+}
+
+.kpi-block.is-placeholder {
+    background: var(--bg-panel);
+    opacity: 0.55;
+}
+
+.kpi-label {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    display: block;
+    margin-bottom: 0.4rem;
+}
+
+.kpi-value {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 1.4rem;
+    color: var(--text-primary);
+    display: block;
+    line-height: 1.1;
+}
+
+.kpi-value.is-gain { color: var(--gain); }
+.kpi-value.is-loss { color: var(--loss); }
+
+.kpi-sub {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 0.3rem;
+    display: block;
+}
+
+.kpi-placeholder-tag {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    color: var(--accent-dim);
+    border: 1px dashed var(--accent-dim);
+    padding: 0.5rem 0.4rem;
+    display: inline-block;
+    margin-top: 0.2rem;
+}
+
+/* ---------------------------------------------------------------------
+   Data table
+   --------------------------------------------------------------------- */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+}
+
+.data-table th {
+    text-align: left;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.74rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: 0.6rem 0.85rem;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg-panel-raised);
+}
+
+.data-table td {
+    padding: 0.6rem 0.85rem;
+    border-bottom: 1px solid var(--line);
+    color: var(--text-primary);
+}
+
+.data-table tbody tr {
+    transition: background-color 0.12s ease;
+}
+
+.data-table tbody tr:hover {
+    background: var(--bg-panel-raised);
+}
+
+.company-row {
+    cursor: pointer;
+}
+
+.company-row .symbol-cell {
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.text-gain { color: var(--gain) !important; }
+.text-loss { color: var(--loss) !important; }
+.text-flat { color: var(--text-muted) !important; }
+
+/* ---------------------------------------------------------------------
+   Movers list (gainers/losers)
+   --------------------------------------------------------------------- */
+.mover-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.55rem 0;
+    border-bottom: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+}
+
+.mover-row:last-child {
+    border-bottom: none;
+}
+
+.mover-symbol {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.mover-name {
+    font-family: var(--font-body);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    display: block;
+}
+
+/* ---------------------------------------------------------------------
+   News list
+   --------------------------------------------------------------------- */
+.news-item {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.news-item:last-child {
+    border-bottom: none;
+}
+
+.news-title {
+    color: var(--text-primary);
+    font-weight: 500;
+    font-size: 0.9rem;
+    display: block;
+}
+
+.news-title:hover {
+    color: var(--accent);
+}
+
+.news-meta {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 0.2rem;
+    display: block;
+}
+
+/* ---------------------------------------------------------------------
+   Filters
+   --------------------------------------------------------------------- */
+.filter-bar {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+}
+
+.form-control, .form-select {
+    background: var(--bg-panel-raised);
+    border: 1px solid var(--line);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    font-size: 0.88rem;
+}
+
+.form-control::placeholder {
+    color: var(--text-muted);
+}
+
+.form-control:focus, .form-select:focus {
+    background: var(--bg-panel-raised);
+    border-color: var(--accent);
+    color: var(--text-primary);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
+.btn-terminal {
+    background: var(--accent);
+    border: none;
+    color: var(--bg-void);
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.86rem;
+    padding: 0.5rem 1.1rem;
+}
+
+.btn-terminal:hover {
+    background: #f7c172;
+    color: var(--bg-void);
+}
+
+.btn-terminal-outline {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--text-muted);
+    font-family: var(--font-body);
+    font-size: 0.86rem;
+    padding: 0.5rem 1.1rem;
+}
+
+.btn-terminal-outline:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* ---------------------------------------------------------------------
+   Empty states
+   --------------------------------------------------------------------- */
+.empty-state {
+    padding: 2.5rem 1rem;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.empty-state-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text-primary);
+    margin-bottom: 0.4rem;
+}
+
+.empty-state-detail {
+    font-size: 0.85rem;
+}
+
+.empty-state-code {
+    font-family: var(--font-mono);
+    background: var(--bg-panel-raised);
+    border: 1px solid var(--line);
+    padding: 0.15rem 0.4rem;
+    font-size: 0.82rem;
+    color: var(--accent);
+}
+
+/* ---------------------------------------------------------------------
+   Future-phase placeholder sections (Company Detail page)
+   --------------------------------------------------------------------- */
+.future-section {
+    border: 1px dashed var(--line);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    position: relative;
+}
+
+.future-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.5rem;
+}
+
+.future-section-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text-muted);
+}
+
+.future-section-body {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+/* ---------------------------------------------------------------------
+   Company profile header (Detail page)
+   --------------------------------------------------------------------- */
+.profile-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.profile-symbol {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 2.2rem;
+    color: var(--text-primary);
+    line-height: 1;
+}
+
+.profile-name {
+    font-family: var(--font-body);
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+
+.profile-meta-tag {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    border: 1px solid var(--line);
+    padding: 0.2rem 0.55rem;
+    margin-right: 0.4rem;
+}
+
+.profile-price {
+    text-align: right;
+}
+
+.profile-price-value {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 2rem;
+    color: var(--text-primary);
+    display: block;
+}
+
+.profile-price-change {
+    font-family: var(--font-mono);
+    font-size: 1.1rem;
+    display: block;
+}
+
+/* ---------------------------------------------------------------------
+   Responsive
+   --------------------------------------------------------------------- */
+@media (max-width: 768px) {
+    .app-main {
+        padding: 1rem;
+    }
+    .profile-header {
+        flex-direction: column;
+    }
+    .profile-price {
+        text-align: left;
+    }
+    .kpi-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}

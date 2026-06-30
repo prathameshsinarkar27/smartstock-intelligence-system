@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block title %}Market Overview{% endblock %}
+
+{% block extra_head %}
+<script id="ticker-data" type="application/json">{{ companies | tojson }}</script>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+
+    <!-- Market-wide KPI row -->
+    <span class="section-label">Market Snapshot</span>
+    <div class="kpi-row">
+        <div class="kpi-block">
+            <span class="kpi-label">Tracked Companies</span>
+            <span class="kpi-value">{{ market_kpis.total_companies }}</span>
+        </div>
+        <div class="kpi-block">
+            <span class="kpi-label">Sectors</span>
+            <span class="kpi-value">{{ market_kpis.total_sectors }}</span>
+        </div>
+        <div class="kpi-block">
+            <span class="kpi-label">Advancers</span>
+            <span class="kpi-value is-gain">{{ market_kpis.advancers_count }}</span>
+        </div>
+        <div class="kpi-block">
+            <span class="kpi-label">Decliners</span>
+            <span class="kpi-value is-loss">{{ market_kpis.decliners_count }}</span>
+        </div>
+        <div class="kpi-block">
+            <span class="kpi-label">Avg Daily Change</span>
+            {% if market_kpis.avg_daily_change_pct is not none %}
+                <span class="kpi-value {% if market_kpis.avg_daily_change_pct > 0 %}is-gain{% elif market_kpis.avg_daily_change_pct < 0 %}is-loss{% endif %}">
+                    {{ market_kpis.avg_daily_change_pct | percent }}
+                </span>
+            {% else %}
+                <span class="kpi-value text-muted">—</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Left column: Gainers/Losers + Sector Performance -->
+        <div class="col-lg-4">
+            <div class="panel">
+                <span class="section-label">Top Gainers</span>
+                {% if top_movers.gainers %}
+                    {% for mover in top_movers.gainers %}
+                    <div class="mover-row">
+                        <div>
+                            <span class="mover-symbol">{{ mover.symbol }}</span>
+                            <span class="mover-name">{{ mover.company_name }}</span>
+                        </div>
+                        <div class="text-end">
+                            <div>{{ mover.current_price | currency }}</div>
+                            <div class="{% if mover.daily_change_pct > 0 %}text-gain{% elif mover.daily_change_pct < 0 %}text-loss{% else %}text-flat{% endif %}">{{ mover.daily_change_pct | percent }}</div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state-detail">No movers yet — need at least two days of price history per symbol.</div>
+                {% endif %}
+            </div>
+
+            <div class="panel">
+                <span class="section-label">Top Losers</span>
+                {% if top_movers.losers %}
+                    {% for mover in top_movers.losers %}
+                    <div class="mover-row">
+                        <div>
+                            <span class="mover-symbol">{{ mover.symbol }}</span>
+                            <span class="mover-name">{{ mover.company_name }}</span>
+                        </div>
+                        <div class="text-end">
+                            <div>{{ mover.current_price | currency }}</div>
+                            <div class="{% if mover.daily_change_pct > 0 %}text-gain{% elif mover.daily_change_pct < 0 %}text-loss{% else %}text-flat{% endif %}">{{ mover.daily_change_pct | percent }}</div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state-detail">No movers yet — need at least two days of price history per symbol.</div>
+                {% endif %}
+            </div>
+
+            <div class="panel">
+                <span class="section-label">Sector Performance</span>
+                {% if sector_performance %}
+                    {% for sector in sector_performance %}
+                    <div class="mover-row">
+                        <div>
+                            <span class="mover-symbol">{{ sector.sector }}</span>
+                            <span class="mover-name">{{ sector.company_count }} compan{{ 'y' if sector.company_count == 1 else 'ies' }}</span>
+                        </div>
+                        <div class="text-end {% if sector.avg_daily_change_pct > 0 %}text-gain{% elif sector.avg_daily_change_pct < 0 %}text-loss{% endif %}">
+                            {{ sector.avg_daily_change_pct | percent }}
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state-detail">No sector data yet.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Right column: News + Company Table -->
+        <div class="col-lg-8">
+            <div class="panel">
+                <span class="section-label">Latest Market News</span>
+                {% if recent_news %}
+                    {% for article in recent_news %}
+                    <div class="news-item">
+                        <a class="news-title" href="{{ article.url }}" target="_blank" rel="noopener noreferrer">{{ article.title }}</a>
+                        <span class="news-meta">{{ article.symbol }} · {{ article.source }} · {{ article.published_date.strftime('%b %d, %Y') if article.published_date else 'date unknown' }}</span>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state">
+                        <div class="empty-state-title">No news loaded yet</div>
+                        <div class="empty-state-detail">Run <span class="empty-state-code">python -m src.pipeline.run_pipeline --symbols AAPL MSFT</span> to fetch news for your tracked symbols.</div>
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="panel">
+                <div class="d-flex justify-content-between align-items-baseline mb-2">
+                    <span class="section-label mb-0">Tracked Companies</span>
+                </div>
+
+                <form method="get" action="/" class="filter-bar">
+                    <input
+                        type="text"
+                        name="search"
+                        class="form-control"
+                        style="max-width: 240px;"
+                        placeholder="Search symbol or name…"
+                        value="{{ active_search or '' }}"
+                    >
+                    <select name="sector" class="form-select" style="max-width: 220px;">
+                        <option value="">All sectors</option>
+                        {% for s in all_sectors %}
+                        <option value="{{ s }}" {% if s == active_sector %}selected{% endif %}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn-terminal">Filter</button>
+                    {% if active_search or active_sector %}
+                    <a href="/" class="btn-terminal-outline">Clear</a>
+                    {% endif %}
+                </form>
+
+                {% if companies %}
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Company</th>
+                                <th>Sector</th>
+                                <th class="text-end">Price</th>
+                                <th class="text-end">Chg %</th>
+                                <th class="text-end">Mkt Cap</th>
+                                <th class="text-end">P/E</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for company in companies %}
+                            <tr class="company-row" onclick="window.location.href='/stocks/{{ company.symbol }}'" tabindex="0">
+                                <td class="symbol-cell">{{ company.symbol }}</td>
+                                <td>{{ company.company_name or '—' }}</td>
+                                <td>{{ company.sector or '—' }}</td>
+                                <td class="text-end">{{ company.current_price | currency if company.current_price is not none else '—' }}</td>
+                                <td class="text-end {% if company.daily_change_pct and company.daily_change_pct > 0 %}text-gain{% elif company.daily_change_pct and company.daily_change_pct < 0 %}text-loss{% endif %}">
+                                    {{ company.daily_change_pct | percent if company.daily_change_pct is not none else '—' }}
+                                </td>
+                                <td class="text-end">{{ company.market_cap | large_number if company.market_cap is not none else '—' }}</td>
+                                <td class="text-end">{{ "%.2f"|format(company.pe_ratio) if company.pe_ratio is not none else '—' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                    <div class="empty-state">
+                        <div class="empty-state-title">
+                            {% if active_search or active_sector %}
+                                No companies match this filter
+                            {% else %}
+                                No companies loaded yet
+                            {% endif %}
+                        </div>
+                        <div class="empty-state-detail">
+                            {% if active_search or active_sector %}
+                                Try a different search term or <a href="/">clear the filter</a>.
+                            {% else %}
+                                Run <span class="empty-state-code">python -m src.pipeline.run_pipeline --symbols AAPL MSFT</span> to load your first symbols.
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

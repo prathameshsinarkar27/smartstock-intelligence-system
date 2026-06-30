@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}Symbol Not Found{% endblock %}
+
+{% block content %}
+<div class="empty-state" style="padding-top: 4rem;">
+    <div class="empty-state-title">"{{ symbol }}" isn't tracked yet</div>
+    <div class="empty-state-detail">
+        This symbol has no record in the companies table. Load it with
+        <span class="empty-state-code">python -m src.pipeline.run_pipeline --symbols {{ symbol }}</span>,
+        then return to the <a href="/">Market Overview</a>.
+    </div>
+</div>
+{% endblock %}
