@@ -28,7 +28,7 @@ from src.etl.transform_data import run_transform_companies, run_transform_for_sy
 from src.ingestion.fetch_company_data import fetch_and_save_companies
 from src.ingestion.fetch_news import fetch_and_save_symbols as fetch_and_save_news
 from src.ingestion.fetch_stock_data import fetch_and_save_symbols as fetch_and_save_prices
-from src.utils.config import settings
+from src.utils.config import TrackedSymbolsError, load_tracked_symbols, settings
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -236,8 +236,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--symbols",
         nargs="+",
-        required=True,
-        help="One or more stock ticker symbols, e.g. --symbols AAPL MSFT GOOGL",
+        required=False,
+        default=None,
+        help=(
+            "One or more stock ticker symbols, e.g. --symbols AAPL MSFT GOOGL. "
+            "If omitted, the pipeline loads its default symbol list from "
+            "config/tracked_symbols.txt instead."
+        ),
     )
     return parser.parse_args()
 
@@ -315,9 +320,18 @@ def main() -> None:
     """
     Entry point for standalone script execution.
 
+    Symbol resolution: if --symbols is provided, those symbols are used
+    exactly as given. If omitted, symbols are loaded from
+    config/tracked_symbols.txt via src.utils.config.load_tracked_symbols().
+    This keeps `python -m src.pipeline.run_pipeline` (no flags) a
+    complete, runnable default, while `--symbols` continues to work exactly
+    as before for one-off or partial runs.
+
     Exit codes:
         0 - every stage succeeded.
-        1 - the pipeline-critical company stage failed (no symbols processed).
+        1 - the pipeline-critical company stage failed (no symbols processed),
+            OR required API keys are missing, OR the default symbols file
+            is missing/empty and no --symbols override was given.
         2 - the company stage succeeded but at least one per-symbol stage failed.
     """
     if not settings.finnhub_api_key or not settings.twelvedata_api_key or not settings.newsapi_api_key:
@@ -329,7 +343,22 @@ def main() -> None:
         sys.exit(1)
 
     args = parse_args()
-    report = run_pipeline(args.symbols)
+
+    if args.symbols:
+        symbols = args.symbols
+        logger.info("Using %d symbol(s) from --symbols: %s", len(symbols), symbols)
+    else:
+        try:
+            symbols = load_tracked_symbols()
+        except TrackedSymbolsError as exc:
+            logger.error(str(exc))
+            sys.exit(1)
+        logger.info(
+            "No --symbols provided; loaded %d symbol(s) from %s",
+            len(symbols), settings.tracked_symbols_path,
+        )
+
+    report = run_pipeline(symbols)
 
     if report.critical_failure:
         sys.exit(1)

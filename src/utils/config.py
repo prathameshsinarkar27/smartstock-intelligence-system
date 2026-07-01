@@ -35,6 +35,8 @@ class Settings:
         postgres_db: PostgreSQL database name.
         postgres_user: PostgreSQL username.
         postgres_password: PostgreSQL password.
+        tracked_symbols_path: Absolute path to config/tracked_symbols.txt,
+            the pipeline's default symbol list.
     """
 
     finnhub_api_key: str
@@ -47,6 +49,7 @@ class Settings:
     postgres_db: str = "smartstock"
     postgres_user: str = "postgres"
     postgres_password: str = ""
+    tracked_symbols_path: Path = PROJECT_ROOT / "config" / "tracked_symbols.txt"
 
 
 def _get_required_env(key: str) -> str:
@@ -85,9 +88,79 @@ def load_settings() -> Settings:
         postgres_db=os.getenv("POSTGRES_DB", "smartstock"),
         postgres_user=os.getenv("POSTGRES_USER", "postgres"),
         postgres_password=os.getenv("POSTGRES_PASSWORD", ""),
+        tracked_symbols_path=PROJECT_ROOT / "config" / "tracked_symbols.txt",
     )
 
 
 # Singleton settings instance, imported by other modules as:
 #   from src.utils.config import settings
 settings = load_settings()
+
+
+class TrackedSymbolsError(Exception):
+    """Raised when config/tracked_symbols.txt is missing, unreadable, or empty."""
+
+
+def load_tracked_symbols(path: Path | None = None) -> list[str]:
+    """
+    Read the default list of tracked stock symbols from a config file
+    (config/tracked_symbols.txt by default).
+
+    Used by src/pipeline/run_pipeline.py as the symbol list, so the
+    most common case (`python -m src.pipeline.run_pipeline`) doesn't 
+    require typing out every symbol on the command line.
+
+    Args:
+        path: Path to the symbols file. Defaults to
+            settings.tracked_symbols_path (config/tracked_symbols.txt at
+            the project root).
+
+    Returns:
+        A list of unique, uppercase, trimmed stock ticker symbols, in the
+        order they first appear in the file.
+
+    Raises:
+        TrackedSymbolsError: If the file does not exist, cannot be read,
+            or contains no symbols after filtering out comments/blank
+            lines (an empty or comment-only file is treated the same as a
+            missing one, since either case leaves the pipeline with
+            nothing to process).
+    """
+    symbols_path = path or settings.tracked_symbols_path
+
+    if not symbols_path.exists():
+        raise TrackedSymbolsError(
+            f"Tracked symbols file not found: {symbols_path}. "
+            f"Create it (one symbol per line) or pass --symbols explicitly."
+        )
+
+    try:
+        raw_lines = symbols_path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise TrackedSymbolsError(f"Could not read tracked symbols file {symbols_path}: {exc}") from exc
+
+    seen: set[str] = set()
+    symbols: list[str] = []
+
+    for line in raw_lines:
+        stripped = line.strip()
+
+        if not stripped or stripped.startswith("#"):
+            continue
+
+        symbol = stripped.upper()
+
+        if symbol in seen:
+            continue
+
+        seen.add(symbol)
+        symbols.append(symbol)
+
+    if not symbols:
+        raise TrackedSymbolsError(
+            f"Tracked symbols file {symbols_path} contains no symbols "
+            f"(only blank lines and/or comments). Add at least one symbol, "
+            f"one per line, or pass --symbols explicitly."
+        )
+
+    return symbols

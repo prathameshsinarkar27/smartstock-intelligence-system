@@ -1,0 +1,72 @@
+# tracked_symbols.txt
+#
+# Default list of stock symbols tracked by the SmartStock Intelligence
+# Platform pipeline (src/pipeline/run_pipeline.py).
+#
+# Used automatically when running the pipeline with no --symbols flag:
+#   python -m src.pipeline.run_pipeline
+# 
+# To single run without editing symbol file, use:
+#   python -m src.pipeline.run_pipeline --symbols AAPL MSFT
+
+
+# ---- Technology ----
+AAPL
+MSFT
+GOOGL
+NVDA
+META
+ADBE
+CRM
+ORCL
+INTC
+AMD
+
+# ---- Consumer Discretionary ----
+AMZN
+TSLA
+HD
+NKE
+MCD
+SBUX
+
+# ---- Financial Services ----
+JPM
+BAC
+WFC
+GS
+MA
+V
+
+# ---- Healthcare ----
+JNJ
+PFE
+UNH
+ABBV
+MRK
+
+# ---- Energy ----
+XOM
+CVX
+COP
+
+# ---- Industrials ----
+BA
+CAT
+GE
+HON
+
+# ---- Communication Services ----
+NFLX
+DIS
+CMCSA
+
+# ---- Consumer Staples ----
+KO
+PEP
+PG
+WMT
+
+# ---- Utilities ----
+NEE
+DUK
