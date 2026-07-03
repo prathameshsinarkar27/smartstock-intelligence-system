@@ -97,9 +97,18 @@
 
     <!-- Price chart -->
     <div class="panel">
-        <span class="section-label">Price History</span>
+        <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2 mb-2">
+            <span class="section-label mb-0">Price History &amp; Technical Indicators</span>
+            {% if price_history %}
+            <div class="chart-toggle-group">
+                <label class="chart-toggle"><input type="checkbox" id="toggle-sma" checked> SMA 20/50</label>
+                <label class="chart-toggle"><input type="checkbox" id="toggle-ema"> EMA 12/26</label>
+                <label class="chart-toggle"><input type="checkbox" id="toggle-bollinger"> Bollinger Bands</label>
+            </div>
+            {% endif %}
+        </div>
         {% if price_history %}
-            <div id="price-chart" style="width: 100%; height: 420px;"></div>
+            <div id="price-chart" style="width: 100%; height: 700px;"></div>
         {% else %}
             <div class="empty-state">
                 <div class="empty-state-title">No price history loaded yet</div>
@@ -145,16 +154,67 @@
          layout doesn't need to be redesigned when these phases land. -->
     <div class="row g-4">
         <div class="col-lg-6">
-            <div class="future-section">
-                <div class="future-section-header">
-                    <span class="future-section-title">Technical Indicators</span>
-                    <span class="phase-tag">Phase 6</span>
+            <div class="panel h-100">
+                <div class="d-flex justify-content-between align-items-baseline mb-2">
+                    <span class="section-label mb-0">Technical Indicators</span>
                 </div>
-                <div class="future-section-body">RSI, MACD, SMA, EMA, and Bollinger Bands will appear here once the technical analysis engine is built.</div>
+                {% if price_history %}
+                <table class="data-table">
+                    <tbody>
+                        <tr>
+                            <td>SMA (20 / 50)</td>
+                            <td class="text-end">
+                                {{ indicators.sma_20 | currency if indicators.sma_20 is not none else '—' }}
+                                /
+                                {{ indicators.sma_50 | currency if indicators.sma_50 is not none else '—' }}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>EMA (12 / 26)</td>
+                            <td class="text-end">
+                                {{ indicators.ema_12 | currency if indicators.ema_12 is not none else '—' }}
+                                /
+                                {{ indicators.ema_26 | currency if indicators.ema_26 is not none else '—' }}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>RSI (14)</td>
+                            <td class="text-end">
+                                {{ "%.1f"|format(indicators.rsi_14) if indicators.rsi_14 is not none else '—' }}
+                                <span class="indicator-tag {% if indicators.rsi_signal == 'Overbought' %}is-loss{% elif indicators.rsi_signal == 'Oversold' %}is-gain{% endif %}">{{ indicators.rsi_signal }}</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>MACD Line / Signal</td>
+                            <td class="text-end">
+                                {{ "%.2f"|format(indicators.macd_line) if indicators.macd_line is not none else '—' }}
+                                /
+                                {{ "%.2f"|format(indicators.macd_signal_line) if indicators.macd_signal_line is not none else '—' }}
+                                <span class="indicator-tag {% if indicators.macd_signal == 'Bullish' %}is-gain{% elif indicators.macd_signal == 'Bearish' %}is-loss{% endif %}">{{ indicators.macd_signal }}</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Bollinger (Upper / Mid / Lower)</td>
+                            <td class="text-end">
+                                {{ indicators.bollinger_upper | currency if indicators.bollinger_upper is not none else '—' }}
+                                /
+                                {{ indicators.bollinger_middle | currency if indicators.bollinger_middle is not none else '—' }}
+                                /
+                                {{ indicators.bollinger_lower | currency if indicators.bollinger_lower is not none else '—' }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                {% if indicators.sma_50 is none %}
+                <div class="empty-state-detail mt-2">Some indicators need more price history than is currently loaded (e.g. SMA-50 needs 50 days). Values will appear as more data is loaded.</div>
+                {% endif %}
+                {% else %}
+                <div class="empty-state-detail">No price history loaded yet — see the chart section above.</div>
+                {% endif %}
             </div>
         </div>
         <div class="col-lg-6">
-            <div class="future-section">
+            <div class="future-section h-100">
                 <div class="future-section-header">
                     <span class="future-section-title">News &amp; Sentiment</span>
                     <span class="phase-tag">Phase 7</span>
@@ -191,28 +251,108 @@
     fetch("/stocks/{{ kpis.symbol }}/chart-data")
         .then(function (res) { return res.json(); })
         .then(function (data) {
-            const trace = {
+            const ind = data.indicators;
+
+            // --- Row 1: candlestick + overlays (SMA/EMA/Bollinger) ---
+            const candleTrace = {
                 x: data.dates,
-                close: data.close,
-                high: data.high,
-                low: data.low,
-                open: data.open,
+                close: data.close, high: data.high, low: data.low, open: data.open,
                 type: "candlestick",
                 name: "{{ kpis.symbol }}",
                 increasing: { line: { color: "#1FC97D" } },
                 decreasing: { line: { color: "#FF4D5E" } },
+                xaxis: "x", yaxis: "y",
             };
+
+            function overlayTrace(values, name, color, visible) {
+                return {
+                    x: data.dates, y: values, type: "scatter", mode: "lines",
+                    name: name, line: { color: color, width: 1.4 },
+                    xaxis: "x", yaxis: "y", visible: visible ? true : "legendonly",
+                };
+            }
+
+            const sma20Trace = overlayTrace(ind.sma_20, "SMA 20", "#F0A93C", true);
+            const sma50Trace = overlayTrace(ind.sma_50, "SMA 50", "#8A6526", true);
+            const ema12Trace = overlayTrace(ind.ema_12, "EMA 12", "#5BA8FF", false);
+            const ema26Trace = overlayTrace(ind.ema_26, "EMA 26", "#3A6FA8", false);
+            const bbUpperTrace = overlayTrace(ind.bollinger.upper_band, "BB Upper", "#7C8694", false);
+            const bbLowerTrace = overlayTrace(ind.bollinger.lower_band, "BB Lower", "#7C8694", false);
+
+            // --- Row 2: RSI ---
+            const rsiTrace = {
+                x: data.dates, y: ind.rsi_14, type: "scatter", mode: "lines",
+                name: "RSI (14)", line: { color: "#F0A93C", width: 1.4 },
+                xaxis: "x", yaxis: "y2",
+            };
+
+            // --- Row 3: MACD ---
+            const macdLineTrace = {
+                x: data.dates, y: ind.macd.macd_line, type: "scatter", mode: "lines",
+                name: "MACD Line", line: { color: "#5BA8FF", width: 1.4 },
+                xaxis: "x", yaxis: "y3",
+            };
+            const macdSignalTrace = {
+                x: data.dates, y: ind.macd.signal_line, type: "scatter", mode: "lines",
+                name: "Signal Line", line: { color: "#F0A93C", width: 1.4 },
+                xaxis: "x", yaxis: "y3",
+            };
+            const macdHistColors = ind.macd.histogram.map(function (v) {
+                return v === null ? "rgba(0,0,0,0)" : (v >= 0 ? "#1FC97D" : "#FF4D5E");
+            });
+            const macdHistTrace = {
+                x: data.dates, y: ind.macd.histogram, type: "bar",
+                name: "Histogram", marker: { color: macdHistColors },
+                xaxis: "x", yaxis: "y3",
+            };
+
+            const axisCommon = { gridcolor: "#1F2630", zerolinecolor: "#1F2630" };
 
             const layout = {
                 paper_bgcolor: "rgba(0,0,0,0)",
                 plot_bgcolor: "rgba(0,0,0,0)",
                 font: { color: "#7C8694", family: "IBM Plex Mono, monospace", size: 11 },
-                margin: { l: 50, r: 20, t: 10, b: 40 },
-                xaxis: { gridcolor: "#1F2630", rangeslider: { visible: false } },
-                yaxis: { gridcolor: "#1F2630", title: "Price (USD)" },
+                margin: { l: 55, r: 20, t: 10, b: 40 },
+                showlegend: true,
+                legend: { orientation: "h", y: 1.05, font: { size: 10 } },
+                grid: { rows: 3, columns: 1, pattern: "independent", roworder: "top to bottom" },
+                xaxis: Object.assign({}, axisCommon, { rangeslider: { visible: false }, domain: [0, 1], anchor: "y" }),
+                yaxis: Object.assign({}, axisCommon, { title: "Price (USD)", domain: [0.45, 1] }),
+                yaxis2: Object.assign({}, axisCommon, { title: "RSI", domain: [0.24, 0.41], range: [0, 100] }),
+                yaxis3: Object.assign({}, axisCommon, { title: "MACD", domain: [0, 0.20] }),
+                shapes: [
+                    // RSI overbought/oversold reference lines at 70/30
+                    { type: "line", xref: "paper", x0: 0, x1: 1, yref: "y2", y0: 70, y1: 70, line: { color: "#FF4D5E", width: 1, dash: "dot" } },
+                    { type: "line", xref: "paper", x0: 0, x1: 1, yref: "y2", y0: 30, y1: 30, line: { color: "#1FC97D", width: 1, dash: "dot" } },
+                ],
             };
 
-            Plotly.newPlot("price-chart", [trace], layout, { responsive: true, displayModeBar: false });
+            const allTraces = [
+                candleTrace, sma20Trace, sma50Trace, ema12Trace, ema26Trace, bbUpperTrace, bbLowerTrace,
+                rsiTrace, macdLineTrace, macdSignalTrace, macdHistTrace,
+            ];
+
+            Plotly.newPlot("price-chart", allTraces, layout, { responsive: true, displayModeBar: false });
+
+            // Checkbox toggles control overlay trace visibility via Plotly.restyle,
+            // rather than re-fetching/re-plotting, so toggling is instant.
+            function setVisible(traceIndices, visible) {
+                Plotly.restyle("price-chart", { visible: visible ? true : "legendonly" }, traceIndices);
+            }
+
+            const smaToggle = document.getElementById("toggle-sma");
+            const emaToggle = document.getElementById("toggle-ema");
+            const bbToggle = document.getElementById("toggle-bollinger");
+
+            if (smaToggle) {
+                smaToggle.addEventListener("change", function () { setVisible([1, 2], this.checked); });
+            }
+            if (emaToggle) {
+                emaToggle.addEventListener("change", function () { setVisible([3, 4], this.checked); });
+            }
+            if (bbToggle) {
+                bbToggle.addEventListener("change", function () { setVisible([5, 6], this.checked); });
+            }
         });
 })();
 </script>

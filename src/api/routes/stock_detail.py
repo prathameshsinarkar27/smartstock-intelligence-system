@@ -11,6 +11,7 @@ and AI-generated insights are present.
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from src.analytics.technical_indicators import compute_all_indicators
 from src.api.services.stock_detail_service import build_company_detail_page_data, get_price_history
 from src.api.templating import templates
 from src.utils.logger import get_logger
@@ -57,19 +58,34 @@ async def company_detail(request: Request, symbol: str):
 @router.get("/stocks/{symbol}/chart-data", response_class=JSONResponse)
 async def company_chart_data(symbol: str):
     """
-    Return this company's price history as JSON, for the page's own
-    Plotly.js chart to fetch client-side after the page loads.
+    Return this company's price history and technical indicators as JSON,
+    for the page's own Plotly.js chart to fetch client-side after the
+    page loads.
 
     Args:
         symbol: Stock ticker symbol from the URL path, e.g. "AAPL".
 
     Returns:
-        A JSON object with parallel arrays: dates, open, high, low, close,
-        volume — the shape Plotly.js candlestick/line traces expect.
-        Empty arrays if the symbol has no price history loaded (the
-        company itself may still exist).
+        A JSON object with:
+            - dates, open, high, low, close, volume: parallel OHLCV
+              arrays, the shape Plotly.js candlestick/line traces expect.
+            - indicators: the full output of
+              src/analytics/technical_indicators.py's compute_all_indicators(),
+              i.e. sma_20/sma_50/ema_12/ema_26/rsi_14 arrays plus nested
+              macd and bollinger dicts — each array the same length as
+              dates, with null entries wherever that indicator isn't
+              computable yet (not enough price history).
+        All arrays are empty (and indicators' nested arrays are empty)
+        if the symbol has no price history loaded (the company itself may
+        still exist).
     """
     price_history = get_price_history(symbol)
+    closes = [row["close"] for row in price_history]
+    indicators = compute_all_indicators(closes) if closes else {
+        "sma_20": [], "sma_50": [], "ema_12": [], "ema_26": [], "rsi_14": [],
+        "macd": {"macd_line": [], "signal_line": [], "histogram": []},
+        "bollinger": {"middle_band": [], "upper_band": [], "lower_band": []},
+    }
 
     return {
         "dates": [row["date"].isoformat() for row in price_history],
@@ -78,4 +94,5 @@ async def company_chart_data(symbol: str):
         "low": [row["low"] for row in price_history],
         "close": [row["close"] for row in price_history],
         "volume": [row["volume"] for row in price_history],
+        "indicators": indicators,
     }

@@ -583,6 +583,55 @@ select:focus-visible,
 }
 
 /* ---------------------------------------------------------------------
+   Technical indicator summary (Phase 6)
+   --------------------------------------------------------------------- */
+.indicator-tag {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.06em;
+    border: 1px solid var(--line);
+    padding: 0.1rem 0.35rem;
+    margin-left: 0.4rem;
+    vertical-align: middle;
+    color: var(--text-muted);
+}
+
+.indicator-tag.is-gain {
+    color: var(--gain);
+    border-color: var(--gain);
+}
+
+.indicator-tag.is-loss {
+    color: var(--loss);
+    border-color: var(--loss);
+}
+
+/* Chart overlay toggle controls (Phase 6) */
+.chart-toggle-group {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.chart-toggle {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.chart-toggle input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 13px;
+    height: 13px;
+    cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------
    Responsive
    --------------------------------------------------------------------- */
 @media (max-width: 768px) {
