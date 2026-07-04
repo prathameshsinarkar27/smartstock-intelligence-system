@@ -139,6 +139,37 @@ def _get_company_sentiment_score(conn: Any, company_id: int) -> float | None:
     return (sum(signed_values) / len(signed_values)) * 100
 
 
+def _get_company_ml_risk_score(conn: Any, company_id: int) -> float | None:
+    """
+    Fetch a company's most recent ML-predicted risk score for the ML Risk
+    Score KPI card, from the predictions table
+    (src/ml/predict.py, Phase 8).
+
+    Args:
+        conn: An open database connection (reused from the caller's
+            get_connection() block).
+        company_id: The company's surrogate key.
+
+    Returns:
+        The risk_score from that company's row in the latest_predictions
+        view (database/views.sql) — already in [0, 1], representing the
+        model ensemble's estimated probability of a downward move over
+        its prediction horizon (see src/ml/predict.py's module docstring)
+        — or None if predict.py hasn't been run for this company yet.
+    """
+    query = """
+        SELECT risk_score
+        FROM latest_predictions
+        WHERE company_id = %s;
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(query, (company_id,))
+        row = cur.fetchone()
+
+    return float(row[0]) if row is not None else None
+
+
 def get_company_kpis(symbol: str) -> dict[str, Any] | None:
     """
     Compute the full set of KPI metrics for a single company's Company
@@ -170,10 +201,13 @@ def get_company_kpis(symbol: str) -> dict[str, Any] | None:
             - sentiment_score: signed mean sentiment across this
               company's scored news articles, in [-100, 100] (Phase 7).
               None if no articles have been scored yet.
-            - ml_risk_score, ai_recommendation: reserved for Phase 8 /
-              Phase 10, always None for now so templates can render
-              "Coming in Phase X" placeholders without a future template
-              change.
+            - ml_risk_score: the model ensemble's most recent estimated
+              probability of a downward price move, in [0, 1] (Phase 8,
+              see src/ml/predict.py). None if predict.py hasn't been run
+              for this company yet.
+            - ai_recommendation: reserved for Phase 10, always None for
+              now so templates can render a "Coming in Phase X"
+              placeholder without a future template change.
     """
     company_query = """
         SELECT company_id, symbol, company_name, sector, industry, market_cap, pe_ratio
@@ -205,6 +239,7 @@ def get_company_kpis(symbol: str) -> dict[str, Any] | None:
         # below (a company can have scored news with no price data yet,
         # or vice versa).
         sentiment_score = _get_company_sentiment_score(conn, company_id)
+        ml_risk_score = _get_company_ml_risk_score(conn, company_id)
 
     if not price_rows:
         # Company exists but has no price history loaded yet.
@@ -224,7 +259,7 @@ def get_company_kpis(symbol: str) -> dict[str, Any] | None:
             "period_start_date": None,
             "period_end_date": None,
             "sentiment_score": sentiment_score,
-            "ml_risk_score": None,
+            "ml_risk_score": ml_risk_score,
             "ai_recommendation": None,
         }
 
@@ -254,8 +289,7 @@ def get_company_kpis(symbol: str) -> dict[str, Any] | None:
         "period_start_date": min(dates),
         "period_end_date": max(dates),
         "sentiment_score": sentiment_score,
-        # Reserved for future phases — see module docstring.
-        "ml_risk_score": None,
+        "ml_risk_score": ml_risk_score,
         "ai_recommendation": None,
     }
 

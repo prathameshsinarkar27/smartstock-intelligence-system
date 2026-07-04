@@ -206,6 +206,46 @@ def get_company_sentiment(symbol: str) -> dict[str, Any]:
     return aggregates
 
 
+def get_company_ml_prediction(symbol: str) -> dict[str, Any] | None:
+    """
+    Fetch a company's most recent ML trend/risk prediction for the
+    Company Detail page's ML Predictions section
+    (src/ml/predict.py, Phase 8).
+
+    Args:
+        symbol: Stock ticker symbol, e.g. "AAPL".
+
+    Returns:
+        A dict with prediction_date, trend_prediction ("up"/"down"/
+        "flat"), and risk_score (in [0, 1]) — sourced from the
+        latest_predictions view (database/views.sql), which already
+        keeps only each company's single most recent prediction row.
+        None if predict.py hasn't produced a prediction for this company
+        yet (distinct from an empty dict, so the template can tell "not
+        predicted yet" apart from "predicted, values pending").
+    """
+    query = """
+        SELECT prediction_date, trend_prediction, risk_score
+        FROM latest_predictions
+        WHERE symbol = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (symbol.upper(),))
+            row = cur.fetchone()
+
+    if row is None:
+        return None
+
+    prediction_date, trend_prediction, risk_score = row
+    return {
+        "prediction_date": prediction_date,
+        "trend_prediction": trend_prediction,
+        "risk_score": float(risk_score),
+    }
+
+
 def build_company_detail_page_data(symbol: str) -> dict[str, Any] | None:
     """
     Assemble everything the Company Detail template needs in one call.
@@ -223,6 +263,10 @@ def build_company_detail_page_data(symbol: str) -> dict[str, Any] | None:
         price_history is empty or too short for a given indicator's
         period), and sentiment (aggregate counts + article list, from
         get_company_sentiment() — Phase 7).
+
+        Also includes ml_prediction: the latest trend/risk prediction
+        from get_company_ml_prediction() (Phase 8), None if no prediction
+        exists yet for this company.
     """
     kpis = get_company_kpis(symbol)
     if kpis is None:
@@ -235,4 +279,5 @@ def build_company_detail_page_data(symbol: str) -> dict[str, Any] | None:
         "price_history": price_history,
         "indicators": get_latest_indicator_summary(price_history),
         "sentiment": get_company_sentiment(symbol),
+        "ml_prediction": get_company_ml_prediction(symbol),
     }

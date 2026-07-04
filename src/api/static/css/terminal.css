@@ -634,6 +634,33 @@ select:focus-visible,
     border-color: var(--line);
 }
 
+/* ---------------------------------------------------------------------
+   Trend badges (Phase 8)
+   --------------------------------------------------------------------- */
+.trend-badge {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    border: 1px solid var(--line);
+    padding: 0.2rem 0.6rem;
+    display: inline-block;
+}
+
+.trend-badge.is-up {
+    color: var(--gain);
+    border-color: var(--gain);
+}
+
+.trend-badge.is-down {
+    color: var(--loss);
+    border-color: var(--loss);
+}
+
+.trend-badge.is-flat {
+    color: var(--text-muted);
+    border-color: var(--line);
+}
+
 /* Chart overlay toggle controls (Phase 6) */
 .chart-toggle-group {
     display: flex;

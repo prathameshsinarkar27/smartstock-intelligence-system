@@ -80,17 +80,20 @@
             {% endif %}
         </div>
 
-        <!-- Sentiment Score: real as of Phase 7. ML Risk Score and AI
-             Recommendation remain reserved placeholders for Phases 8/10. -->
+        <!-- Sentiment Score (Phase 7) and ML Risk Score (Phase 8) are
+             real. AI Recommendation remains a reserved placeholder for
+             Phase 10. -->
         <div class="kpi-block">
             <span class="kpi-label">Sentiment Score</span>
             <span class="kpi-value {% if kpis.sentiment_score and kpis.sentiment_score > 0 %}is-gain{% elif kpis.sentiment_score and kpis.sentiment_score < 0 %}is-loss{% endif %}">
                 {{ kpis.sentiment_score | percent if kpis.sentiment_score is not none else '—' }}
             </span>
         </div>
-        <div class="kpi-block is-placeholder">
+        <div class="kpi-block">
             <span class="kpi-label">ML Risk Score</span>
-            <span class="kpi-placeholder-tag">Coming in Phase 8</span>
+            <span class="kpi-value {% if kpis.ml_risk_score is not none and kpis.ml_risk_score >= 0.5 %}is-loss{% elif kpis.ml_risk_score is not none %}is-gain{% endif %}">
+                {{ "%.2f%%"|format(kpis.ml_risk_score * 100) if kpis.ml_risk_score is not none else '—' }}
+            </span>
         </div>
         <div class="kpi-block is-placeholder">
             <span class="kpi-label">AI Recommendation</span>
@@ -260,12 +263,38 @@
             </div>
         </div>
         <div class="col-lg-6">
-            <div class="future-section">
-                <div class="future-section-header">
-                    <span class="future-section-title">ML Predictions</span>
-                    <span class="phase-tag">Phase 8</span>
+            <div class="panel h-100">
+                <div class="d-flex justify-content-between align-items-baseline mb-2">
+                    <span class="section-label mb-0">ML Predictions</span>
                 </div>
-                <div class="future-section-body">Trend direction and risk category predictions, with SHAP-based explanations (Phase 9), will appear here once the ML engine is built.</div>
+                {% if ml_prediction %}
+                <div class="empty-state-detail mb-3">
+                    As of {{ ml_prediction.prediction_date.strftime('%b %d, %Y') }} &middot;
+                    Random Forest + XGBoost ensemble
+                </div>
+                <div class="mb-3">
+                    <span class="kpi-label">Predicted Trend</span>
+                    <span class="trend-badge is-{{ ml_prediction.trend_prediction }}">{{ ml_prediction.trend_prediction | capitalize }}</span>
+                </div>
+                <div>
+                    <span class="kpi-label">Risk of Downside</span>
+                    <span class="kpi-value {% if ml_prediction.risk_score >= 0.5 %}is-loss{% else %}is-gain{% endif %}">
+                        {{ "%.2f%%"|format(ml_prediction.risk_score * 100) }}
+                    </span>
+                </div>
+                <div class="empty-state-detail mt-3">
+                    SHAP-based feature explanations for this prediction are coming in Phase 9.
+                </div>
+                {% else %}
+                <div class="empty-state-detail">
+                    No ML prediction yet for this company. Once enough price
+                    (and ideally sentiment) history is loaded, run
+                    <span class="empty-state-code">python -m src.ml.train_model</span>
+                    followed by
+                    <span class="empty-state-code">python -m src.ml.predict --symbols {{ kpis.symbol }}</span>
+                    to populate this section.
+                </div>
+                {% endif %}
             </div>
         </div>
         <div class="col-lg-6">
