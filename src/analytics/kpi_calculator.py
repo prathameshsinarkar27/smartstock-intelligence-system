@@ -88,6 +88,57 @@ def get_market_overview_kpis() -> dict[str, Any]:
     }
 
 
+def _get_company_sentiment_score(conn: Any, company_id: int) -> float | None:
+    """
+    Compute a single signed sentiment figure for a company's Sentiment
+    Score KPI card, from its scored news articles
+    (src/sentiment/sentiment_pipeline.py, Phase 7).
+
+    Each scored article contributes its confidence_score with a sign
+    matching its label (+confidence for positive, -confidence for
+    negative, 0 for neutral), and the figure is the mean of those signed
+    values across all scored articles, scaled to a -100..100 range so it
+    renders through the same `| percent` template filter used by
+    daily_change_pct elsewhere on this page.
+
+    Args:
+        conn: An open database connection (reused from the caller's
+            get_connection() block rather than opening a second one).
+        company_id: The company's surrogate key.
+
+    Returns:
+        The signed sentiment figure in [-100, 100], or None if the
+        company has no scored news articles yet (distinct from a
+        computed 0.0, which means the scored articles average out to
+        neutral).
+    """
+    query = """
+        SELECT ss.sentiment, ss.confidence_score
+        FROM sentiment_scores ss
+        JOIN news_articles na ON na.news_id = ss.news_id
+        WHERE na.company_id = %s;
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(query, (company_id,))
+        rows = cur.fetchall()
+
+    if not rows:
+        return None
+
+    signed_values = []
+    for sentiment, confidence_score in rows:
+        confidence = float(confidence_score)
+        if sentiment == "positive":
+            signed_values.append(confidence)
+        elif sentiment == "negative":
+            signed_values.append(-confidence)
+        else:
+            signed_values.append(0.0)
+
+    return (sum(signed_values) / len(signed_values)) * 100
+
+
 def get_company_kpis(symbol: str) -> dict[str, Any] | None:
     """
     Compute the full set of KPI metrics for a single company's Company
@@ -116,10 +167,13 @@ def get_company_kpis(symbol: str) -> dict[str, Any] | None:
             - period_high, period_low: high/low over available price history
             - period_start_date, period_end_date: the actual date range
               period_high/period_low were computed over
-            - sentiment_score, ml_risk_score, ai_recommendation: reserved
-              for Phase 7 / Phase 8 / Phase 10, always None for now so
-              templates can render "Coming in Phase X" placeholders without
-              a future template change.
+            - sentiment_score: signed mean sentiment across this
+              company's scored news articles, in [-100, 100] (Phase 7).
+              None if no articles have been scored yet.
+            - ml_risk_score, ai_recommendation: reserved for Phase 8 /
+              Phase 10, always None for now so templates can render
+              "Coming in Phase X" placeholders without a future template
+              change.
     """
     company_query = """
         SELECT company_id, symbol, company_name, sector, industry, market_cap, pe_ratio
@@ -146,6 +200,12 @@ def get_company_kpis(symbol: str) -> dict[str, Any] | None:
             cur.execute(price_history_query, (company_id,))
             price_rows = cur.fetchall()
 
+        # Computed here (Phase 7) while the connection is still open, since
+        # it's independent of price history and needed in both branches
+        # below (a company can have scored news with no price data yet,
+        # or vice versa).
+        sentiment_score = _get_company_sentiment_score(conn, company_id)
+
     if not price_rows:
         # Company exists but has no price history loaded yet.
         return {
@@ -163,7 +223,7 @@ def get_company_kpis(symbol: str) -> dict[str, Any] | None:
             "period_low": None,
             "period_start_date": None,
             "period_end_date": None,
-            "sentiment_score": None,
+            "sentiment_score": sentiment_score,
             "ml_risk_score": None,
             "ai_recommendation": None,
         }
@@ -193,8 +253,8 @@ def get_company_kpis(symbol: str) -> dict[str, Any] | None:
         "period_low": min(closes),
         "period_start_date": min(dates),
         "period_end_date": max(dates),
+        "sentiment_score": sentiment_score,
         # Reserved for future phases — see module docstring.
-        "sentiment_score": None,
         "ml_risk_score": None,
         "ai_recommendation": None,
     }

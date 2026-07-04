@@ -606,6 +606,34 @@ select:focus-visible,
     border-color: var(--loss);
 }
 
+/* ---------------------------------------------------------------------
+   Sentiment badges (Phase 7)
+   --------------------------------------------------------------------- */
+.sentiment-badge {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.06em;
+    border: 1px solid var(--line);
+    padding: 0.15rem 0.5rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.sentiment-badge.is-positive {
+    color: var(--gain);
+    border-color: var(--gain);
+}
+
+.sentiment-badge.is-negative {
+    color: var(--loss);
+    border-color: var(--loss);
+}
+
+.sentiment-badge.is-neutral {
+    color: var(--text-muted);
+    border-color: var(--line);
+}
+
 /* Chart overlay toggle controls (Phase 6) */
 .chart-toggle-group {
     display: flex;

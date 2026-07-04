@@ -23,6 +23,45 @@ logger = get_logger(__name__)
 RECENT_NEWS_LIMIT = 8
 
 
+def _dominant_sentiment_label(
+    positive_count: int | None,
+    negative_count: int | None,
+    neutral_count: int | None,
+) -> str | None:
+    """
+    Reduce a company's sentiment_scores counts (as returned by the
+    company_sentiment_summary view) to a single label for the Market
+    Overview table's compact Sentiment column.
+
+    Args:
+        positive_count: Count of this company's articles scored
+            "positive". None if the company has no scored articles
+            (company_sentiment_summary has no row for it at all).
+        negative_count: Count scored "negative". None under the same
+            condition as positive_count.
+        neutral_count: Count scored "neutral". None under the same
+            condition as positive_count.
+
+    Returns:
+        "positive", "negative", or "neutral" — whichever count is
+        highest. Ties are broken in that same order (positive beats
+        negative beats neutral), matching the intuition that a tied
+        positive/negative split is more notable than defaulting to
+        neutral. Returns None if the company has no scored articles at
+        all (all three counts None, from the LEFT JOIN finding no
+        matching view row).
+    """
+    if positive_count is None and negative_count is None and neutral_count is None:
+        return None
+
+    counts = {
+        "positive": positive_count or 0,
+        "negative": negative_count or 0,
+        "neutral": neutral_count or 0,
+    }
+    return max(counts, key=lambda label: (counts[label], label == "positive", label == "negative"))
+
+
 def get_recent_news(limit: int = RECENT_NEWS_LIMIT) -> list[dict[str, Any]]:
     """
     Fetch the most recently published news articles across all tracked
@@ -79,10 +118,14 @@ def get_filtered_companies(
 
     Returns:
         A list of dicts with symbol, company_name, sector, industry,
-        market_cap, pe_ratio, current_price, and daily_change_pct (None if
-        fewer than two days of price history exist for that company),
-        ordered by symbol. Returns an empty list if no companies match (or
-        none are loaded yet).
+        market_cap, pe_ratio, current_price, daily_change_pct (None if
+        fewer than two days of price history exist for that company), and
+        sentiment_label (Phase 7) — one of "positive", "negative",
+        "neutral" (whichever has the highest scored-article count for
+        that company; ties favor positive, then negative, then neutral),
+        or None if the company has no scored news articles yet.
+        Ordered by symbol. Returns an empty list if no companies match
+        (or none are loaded yet).
     """
     query = """
         WITH ranked_prices AS (
@@ -109,9 +152,13 @@ def get_filtered_companies(
             c.market_cap,
             c.pe_ratio,
             lt.latest_close,
-            lt.previous_close
+            lt.previous_close,
+            css.positive_count,
+            css.negative_count,
+            css.neutral_count
         FROM companies c
         LEFT JOIN latest_two lt ON lt.company_id = c.company_id
+        LEFT JOIN company_sentiment_summary css ON css.company_id = c.company_id
         WHERE
             (%(sector)s::text IS NULL OR c.sector = %(sector)s)
             AND (
@@ -133,13 +180,16 @@ def get_filtered_companies(
             rows = cur.fetchall()
 
     companies = []
-    for symbol, company_name, sector_val, industry, market_cap, pe_ratio, latest_close, previous_close in rows:
+    for (
+        symbol_val, company_name, sector_val, industry, market_cap, pe_ratio,
+        latest_close, previous_close, positive_count, negative_count, neutral_count,
+    ) in rows:
         daily_change_pct = None
         if latest_close is not None and previous_close is not None and previous_close != 0:
             daily_change_pct = float((latest_close - previous_close) / previous_close * 100)
 
         companies.append({
-            "symbol": symbol,
+            "symbol": symbol_val,
             "company_name": company_name,
             "sector": sector_val,
             "industry": industry,
@@ -147,6 +197,7 @@ def get_filtered_companies(
             "pe_ratio": float(pe_ratio) if pe_ratio is not None else None,
             "current_price": float(latest_close) if latest_close is not None else None,
             "daily_change_pct": daily_change_pct,
+            "sentiment_label": _dominant_sentiment_label(positive_count, negative_count, neutral_count),
         })
 
     return companies

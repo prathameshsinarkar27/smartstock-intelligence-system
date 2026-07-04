@@ -160,6 +160,7 @@
                                 <th class="text-end">Chg %</th>
                                 <th class="text-end">Mkt Cap</th>
                                 <th class="text-end">P/E</th>
+                                <th>Sentiment</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -174,6 +175,13 @@
                                 </td>
                                 <td class="text-end">{{ company.market_cap | large_number if company.market_cap is not none else '—' }}</td>
                                 <td class="text-end">{{ "%.2f"|format(company.pe_ratio) if company.pe_ratio is not none else '—' }}</td>
+                                <td>
+                                    {% if company.sentiment_label %}
+                                    <span class="sentiment-badge is-{{ company.sentiment_label }}">{{ company.sentiment_label | capitalize }}</span>
+                                    {% else %}
+                                    <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
