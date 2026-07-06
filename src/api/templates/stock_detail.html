@@ -282,9 +282,39 @@
                         {{ "%.2f%%"|format(ml_prediction.risk_score * 100) }}
                     </span>
                 </div>
-                <div class="empty-state-detail mt-3">
-                    SHAP-based feature explanations for this prediction are coming in Phase 9.
+                <div class="empty-state-detail mt-3 mb-2">
+                    Top factors behind the Risk of Downside estimate
+                    (SHAP, RandomForest + XGBoost averaged):
                 </div>
+                {% if ml_explanation %}
+                <table class="data-table">
+                    <tbody>
+                        {% for c in ml_explanation.contributions %}
+                        <tr>
+                            <td>{{ c.display_name }}</td>
+                            <td style="width: 40%;">
+                                <span class="shap-bar-track">
+                                    <span class="shap-bar-fill is-{{ c.direction }}" style="width: {{ (c.abs_share * 100) | round(1) }}%;"></span>
+                                </span>
+                            </td>
+                            <td class="text-end" style="white-space: nowrap;">
+                                {{ "%+.1f%%"|format(c.contribution_share * 100) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <div class="empty-state-detail">
+                    Red bars increase the estimated downside risk; green bars reduce it.
+                </div>
+                {% else %}
+                <div class="empty-state-detail">
+                    SHAP explanation unavailable — the saved model files may be
+                    missing on this machine. Run
+                    <span class="empty-state-code">python -m src.ml.train_model</span>
+                    to regenerate them.
+                </div>
+                {% endif %}
                 {% else %}
                 <div class="empty-state-detail">
                     No ML prediction yet for this company. Once enough price

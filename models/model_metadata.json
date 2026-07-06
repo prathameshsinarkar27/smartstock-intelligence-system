@@ -19,7 +19,7 @@
     "up": 2
   },
   "test_cutoff_date": "2026-03-25",
-  "trained_at": "2026-07-04T18:31:53.776566+00:00",
+  "trained_at": "2026-07-06T17:57:48.734522+00:00",
   "train_rows": 6468,
   "test_rows": 1638,
   "train_companies": [

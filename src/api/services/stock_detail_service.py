@@ -16,6 +16,8 @@ from src.analytics.technical_indicators import (
     interpret_macd_crossover,
     interpret_rsi,
 )
+from src.explainability.shap_analysis import explain_company_prediction
+from src.ml.train_model import ModelNotTrainedError
 from src.utils.database import get_connection
 from src.utils.logger import get_logger
 
@@ -246,6 +248,33 @@ def get_company_ml_prediction(symbol: str) -> dict[str, Any] | None:
     }
 
 
+def get_company_ml_explanation(symbol: str, top_n: int = 5) -> dict[str, Any] | None:
+    """
+    Explain a company's latest ML prediction with SHAP feature
+    contributions toward the "down" class — the same class risk_score is
+    defined over (src/explainability/shap_analysis.py, Phase 9).
+
+    Args:
+        symbol: Stock ticker symbol, e.g. "AAPL".
+        top_n: How many top-contributing features to return.
+
+    Returns:
+        explain_company_prediction()'s output (target_class, symbol,
+        prediction_date, contributions), or None if either: this company
+        has no usable latest feature row (same condition
+        get_company_ml_prediction handles), or the models haven't been
+        trained yet at all (src/ml/train_model.py hasn't been run) — in
+        which case this is logged, not raised, since a missing
+        explanation should render as an empty state on the dashboard, not
+        a 500 error.
+    """
+    try:
+        return explain_company_prediction(symbol, top_n=top_n)
+    except ModelNotTrainedError:
+        logger.info("SHAP explanation unavailable for %s: models not trained yet.", symbol)
+        return None
+
+
 def build_company_detail_page_data(symbol: str) -> dict[str, Any] | None:
     """
     Assemble everything the Company Detail template needs in one call.
@@ -266,18 +295,25 @@ def build_company_detail_page_data(symbol: str) -> dict[str, Any] | None:
 
         Also includes ml_prediction: the latest trend/risk prediction
         from get_company_ml_prediction() (Phase 8), None if no prediction
-        exists yet for this company.
+        exists yet for this company. And ml_explanation: SHAP feature
+        contributions for that same prediction (Phase 9, from
+        get_company_ml_explanation()) — None if there's no prediction to
+        explain, or if the models haven't been trained yet.
     """
     kpis = get_company_kpis(symbol)
     if kpis is None:
         return None
 
     price_history = get_price_history(symbol)
+    ml_prediction = get_company_ml_prediction(symbol)
 
     return {
         "kpis": kpis,
         "price_history": price_history,
         "indicators": get_latest_indicator_summary(price_history),
         "sentiment": get_company_sentiment(symbol),
-        "ml_prediction": get_company_ml_prediction(symbol),
+        "ml_prediction": ml_prediction,
+        # Only worth computing (rebuilds this company's full feature row)
+        # if there's actually a prediction to explain.
+        "ml_explanation": get_company_ml_explanation(symbol) if ml_prediction is not None else None,
     }
