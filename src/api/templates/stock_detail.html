@@ -80,9 +80,8 @@
             {% endif %}
         </div>
 
-        <!-- Sentiment Score (Phase 7) and ML Risk Score (Phase 8) are
-             real. AI Recommendation remains a reserved placeholder for
-             Phase 10. -->
+        <!-- Sentiment Score (Phase 7), ML Risk Score (Phase 8), and AI
+             Recommendation (Phase 10) are all real. -->
         <div class="kpi-block">
             <span class="kpi-label">Sentiment Score</span>
             <span class="kpi-value {% if kpis.sentiment_score and kpis.sentiment_score > 0 %}is-gain{% elif kpis.sentiment_score and kpis.sentiment_score < 0 %}is-loss{% endif %}">
@@ -95,9 +94,13 @@
                 {{ "%.2f%%"|format(kpis.ml_risk_score * 100) if kpis.ml_risk_score is not none else '—' }}
             </span>
         </div>
-        <div class="kpi-block is-placeholder">
+        <div class="kpi-block">
             <span class="kpi-label">AI Recommendation</span>
-            <span class="kpi-placeholder-tag">Coming in Phase 10</span>
+            {% if ai_analysis %}
+            <span class="outlook-badge is-{{ ai_analysis.outlook | lower }}">{{ ai_analysis.outlook }}</span>
+            {% else %}
+            <span class="kpi-value">—</span>
+            {% endif %}
         </div>
     </div>
 
@@ -328,12 +331,32 @@
             </div>
         </div>
         <div class="col-lg-6">
-            <div class="future-section">
-                <div class="future-section-header">
-                    <span class="future-section-title">AI Insights</span>
-                    <span class="phase-tag">Phase 10</span>
+            <div class="panel h-100">
+                <div class="d-flex justify-content-between align-items-baseline mb-2">
+                    <span class="section-label mb-0">AI Insights</span>
                 </div>
-                <div class="future-section-body">A natural-language company summary and risk explanation from the AI research assistant will appear here once the GenAI layer is built.</div>
+                {% if ai_analysis %}
+                <div class="empty-state-detail mb-3">
+                    Generated {{ ai_analysis.generated_at.strftime('%b %d, %Y') }} &middot;
+                    Gemini, informed by the data on this page
+                </div>
+                <p style="margin-bottom: 1rem;">{{ ai_analysis.summary }}</p>
+                <span class="kpi-label">Key Considerations</span>
+                <ul class="mb-3">
+                    {% for point in ai_analysis.key_considerations %}
+                    <li>{{ point }}</li>
+                    {% endfor %}
+                </ul>
+                <div class="empty-state-detail">{{ ai_disclaimer }}</div>
+                {% else %}
+                <div class="empty-state-detail">
+                    AI analysis unavailable — either
+                    <span class="empty-state-code">GEMINI_API_KEY</span>
+                    isn't set, or the Gemini API call didn't succeed. See
+                    <span class="empty-state-code">PHASE_10_SETUP_GUIDE.md</span>
+                    for how to configure it.
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>

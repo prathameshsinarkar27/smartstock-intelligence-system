@@ -662,6 +662,34 @@ select:focus-visible,
 }
 
 /* ---------------------------------------------------------------------
+   AI outlook badges (Phase 10)
+   --------------------------------------------------------------------- */
+.outlook-badge {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    border: 1px solid var(--line);
+    padding: 0.2rem 0.6rem;
+    display: inline-block;
+}
+
+.outlook-badge.is-bullish {
+    color: var(--gain);
+    border-color: var(--gain);
+}
+
+.outlook-badge.is-bearish {
+    color: var(--loss);
+    border-color: var(--loss);
+}
+
+.outlook-badge.is-mixed,
+.outlook-badge.is-cautious {
+    color: var(--accent);
+    border-color: var(--accent-dim);
+}
+
+/* ---------------------------------------------------------------------
    SHAP contribution bars (Phase 9)
    --------------------------------------------------------------------- */
 .shap-bar-track {

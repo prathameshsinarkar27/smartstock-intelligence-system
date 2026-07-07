@@ -28,6 +28,12 @@ class Settings:
         finnhub_api_key: API key for Finnhub (company profile/fundamentals data).
         newsapi_api_key: API key for NewsAPI.org (news articles).
         twelvedata_api_key: API key for Twelve Data (historical stock price data).
+        gemini_api_key: API key for the Gemini API (Google AI Studio),
+            used by the AI Research Assistant (Phase 10).
+        gemini_model: Which Gemini model to call. Configurable rather than
+            hardcoded since available model names change over time and
+            depend on the API key's plan/access — see .env.example for
+            the current default and how to override it.
         data_raw_dir: Absolute path to the data/raw/ directory.
         request_timeout_seconds: Default timeout for outbound HTTP requests.
         postgres_host: PostgreSQL server host.
@@ -42,7 +48,9 @@ class Settings:
     finnhub_api_key: str
     newsapi_api_key: str
     twelvedata_api_key: str
+    gemini_api_key: str
     data_raw_dir: Path
+    gemini_model: str = "gemini-2.5-flash"
     request_timeout_seconds: int = 30
     postgres_host: str = "localhost"
     postgres_port: int = 5432
@@ -81,7 +89,9 @@ def load_settings() -> Settings:
         finnhub_api_key=_get_required_env("FINNHUB_API_KEY"),
         newsapi_api_key=_get_required_env("NEWSAPI_API_KEY"),
         twelvedata_api_key=_get_required_env("TWELVEDATA_API_KEY"),
+        gemini_api_key=_get_required_env("GEMINI_API_KEY"),
         data_raw_dir=PROJECT_ROOT / "data" / "raw",
+        gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip(),
         request_timeout_seconds=int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30")),
         postgres_host=os.getenv("POSTGRES_HOST", "localhost"),
         postgres_port=int(os.getenv("POSTGRES_PORT", "5432")),
@@ -106,9 +116,17 @@ def load_tracked_symbols(path: Path | None = None) -> list[str]:
     Read the default list of tracked stock symbols from a config file
     (config/tracked_symbols.txt by default).
 
-    Used by src/pipeline/run_pipeline.py as the symbol list, so the
-    most common case (`python -m src.pipeline.run_pipeline`) doesn't 
-    require typing out every symbol on the command line.
+    Used by src/pipeline/run_pipeline.py as the symbol list when the
+    pipeline is run with no --symbols flag, so the most common case
+    (`python -m src.pipeline.run_pipeline`) doesn't require typing out
+    every symbol on the command line.
+
+    File format: one symbol per line. Blank lines and lines starting with
+    "#" (comments) are ignored. Symbols are trimmed of surrounding
+    whitespace and uppercased. Duplicate symbols (after trimming/
+    uppercasing) are ignored, keeping only the first occurrence, so the
+    file can be organized into commented sector groupings without
+    worrying about accidental repeats across groups.
 
     Args:
         path: Path to the symbols file. Defaults to

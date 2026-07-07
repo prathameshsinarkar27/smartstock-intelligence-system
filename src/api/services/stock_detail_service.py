@@ -17,6 +17,8 @@ from src.analytics.technical_indicators import (
     interpret_rsi,
 )
 from src.explainability.shap_analysis import explain_company_prediction
+from src.genai.llm_utils import LLMConfigError, LLMRequestError
+from src.genai.stock_assistant import DISCLAIMER_TEXT, get_company_ai_insight
 from src.ml.train_model import ModelNotTrainedError
 from src.utils.database import get_connection
 from src.utils.logger import get_logger
@@ -275,6 +277,35 @@ def get_company_ml_explanation(symbol: str, top_n: int = 5) -> dict[str, Any] | 
         return None
 
 
+def get_company_ai_analysis(symbol: str) -> dict[str, Any] | None:
+    """
+    Get an AI-generated research summary for the Company Detail page's AI
+    Insights section and AI Recommendation KPI card
+    (src/genai/stock_assistant.py, Phase 10).
+
+    Args:
+        symbol: Stock ticker symbol, e.g. "AAPL".
+
+    Returns:
+        None if either: the symbol isn't a tracked company, or generating
+        the analysis failed for a configuration or API reason (missing
+        GEMINI_API_KEY, a failed/malformed Gemini response) — both are
+        logged, not raised, so a missing AI analysis renders as an empty
+        state on the dashboard rather than a 500, the same pattern used
+        for ModelNotTrainedError in Phase 8/9. Otherwise
+        get_company_ai_insight()'s output: symbol, outlook, summary,
+        key_considerations, generated_at.
+    """
+    try:
+        return get_company_ai_insight(symbol)
+    except LLMConfigError as exc:
+        logger.info("AI analysis unavailable for %s: %s", symbol, exc)
+        return None
+    except LLMRequestError as exc:
+        logger.warning("AI analysis failed for %s: %s", symbol, exc)
+        return None
+
+
 def build_company_detail_page_data(symbol: str) -> dict[str, Any] | None:
     """
     Assemble everything the Company Detail template needs in one call.
@@ -299,6 +330,11 @@ def build_company_detail_page_data(symbol: str) -> dict[str, Any] | None:
         contributions for that same prediction (Phase 9, from
         get_company_ml_explanation()) — None if there's no prediction to
         explain, or if the models haven't been trained yet.
+
+        Also includes ai_analysis: an AI-generated research summary
+        (Phase 10, from get_company_ai_analysis()) — None if generating
+        it failed (missing API key, API error) or the underlying data was
+        too thin to build a context from.
     """
     kpis = get_company_kpis(symbol)
     if kpis is None:
@@ -316,4 +352,6 @@ def build_company_detail_page_data(symbol: str) -> dict[str, Any] | None:
         # Only worth computing (rebuilds this company's full feature row)
         # if there's actually a prediction to explain.
         "ml_explanation": get_company_ml_explanation(symbol) if ml_prediction is not None else None,
+        "ai_analysis": get_company_ai_analysis(symbol),
+        "ai_disclaimer": DISCLAIMER_TEXT,
     }

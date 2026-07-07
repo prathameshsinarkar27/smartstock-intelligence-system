@@ -205,9 +205,9 @@ def get_company_kpis(symbol: str) -> dict[str, Any] | None:
               probability of a downward price move, in [0, 1] (Phase 8,
               see src/ml/predict.py). None if predict.py hasn't been run
               for this company yet.
-            - ai_recommendation: reserved for Phase 10, always None for
-              now so templates can render a "Coming in Phase X"
-              placeholder without a future template change.
+            - ai_recommendation: always None (see module docstring) —
+              Phase 10's AI outlook is surfaced separately, not through
+              this function.
     """
     company_query = """
         SELECT company_id, symbol, company_name, sector, industry, market_cap, pe_ratio
@@ -290,6 +290,7 @@ def get_company_kpis(symbol: str) -> dict[str, Any] | None:
         "period_end_date": max(dates),
         "sentiment_score": sentiment_score,
         "ml_risk_score": ml_risk_score,
+        # Reserved for Phase 10 — see module docstring.
         "ai_recommendation": None,
     }
 

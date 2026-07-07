@@ -18,10 +18,10 @@
     "flat": 1,
     "up": 2
   },
-  "test_cutoff_date": "2026-03-25",
-  "trained_at": "2026-07-06T17:57:48.734522+00:00",
-  "train_rows": 6468,
-  "test_rows": 1638,
+  "test_cutoff_date": "2026-03-26",
+  "trained_at": "2026-07-07T18:33:00.161323+00:00",
+  "train_rows": 6494,
+  "test_rows": 1628,
   "train_companies": [
     "AAPL",
     "ABBV",
@@ -50,6 +50,6 @@
     "WMT",
     "XOM"
   ],
-  "random_forest_holdout_accuracy": 0.3803418803418803,
-  "xgboost_holdout_accuracy": 0.4004884004884005
+  "random_forest_holdout_accuracy": 0.3808353808353808,
+  "xgboost_holdout_accuracy": 0.40171990171990174
 }
