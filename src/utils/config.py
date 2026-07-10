@@ -43,6 +43,17 @@ class Settings:
         postgres_password: PostgreSQL password.
         tracked_symbols_path: Absolute path to config/tracked_symbols.txt,
             the pipeline's default symbol list.
+        rag_embed_batch_size: Max texts per Gemini embedContent call in
+            src/rag/embeddings.py. Kept small by default to stay under
+            free-tier rate limits; raise it on a paid tier for fewer,
+            larger calls.
+        rag_embed_inter_batch_delay_seconds: Fixed pause between
+            successful embedding batches, to stay under free-tier
+            requests-per-minute quotas proactively rather than relying
+            solely on 429 retries. 0 disables the pause.
+        rag_embed_max_retries: How many times to retry a single
+            embedding batch after a 429 RESOURCE_EXHAUSTED response
+            before giving up on it.
     """
 
     finnhub_api_key: str
@@ -58,6 +69,9 @@ class Settings:
     postgres_user: str = "postgres"
     postgres_password: str = ""
     tracked_symbols_path: Path = PROJECT_ROOT / "config" / "tracked_symbols.txt"
+    rag_embed_batch_size: int = 10
+    rag_embed_inter_batch_delay_seconds: float = 1.0
+    rag_embed_max_retries: int = 5
 
 
 def _get_required_env(key: str) -> str:
@@ -99,6 +113,9 @@ def load_settings() -> Settings:
         postgres_user=os.getenv("POSTGRES_USER", "postgres"),
         postgres_password=os.getenv("POSTGRES_PASSWORD", ""),
         tracked_symbols_path=PROJECT_ROOT / "config" / "tracked_symbols.txt",
+        rag_embed_batch_size=int(os.getenv("RAG_EMBED_BATCH_SIZE", "10")),
+        rag_embed_inter_batch_delay_seconds=float(os.getenv("RAG_EMBED_INTER_BATCH_DELAY_SECONDS", "1.0")),
+        rag_embed_max_retries=int(os.getenv("RAG_EMBED_MAX_RETRIES", "5")),
     )
 
 

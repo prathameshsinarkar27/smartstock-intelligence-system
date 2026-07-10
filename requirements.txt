@@ -23,3 +23,7 @@ joblib==1.4.2
 shap==0.48.0
 
 google-genai==2.10.0
+
+chromadb==1.5.9
+pypdf==5.9.0
+langchain-text-splitters==1.1.2
