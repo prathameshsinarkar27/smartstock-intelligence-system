@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+
+{% block title %}Portfolio — {{ user_name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+
+    <div class="profile-header">
+        <div>
+            <div class="profile-symbol">Portfolio</div>
+            <div class="profile-name">Trading as: {{ user_name }}</div>
+        </div>
+        <div class="profile-price">
+            <form method="get" action="/portfolio" class="filter-bar" style="justify-content: flex-end;">
+                <input
+                    type="text"
+                    name="user"
+                    class="form-control"
+                    style="max-width: 200px;"
+                    placeholder="Trading as…"
+                    value="{{ user_name }}"
+                >
+                <button type="submit" class="btn-terminal-outline">Switch User</button>
+            </form>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-danger" role="alert">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    <!-- Portfolio-wide KPI row -->
+    <span class="section-label">Portfolio Summary</span>
+    <div class="kpi-row">
+        <div class="kpi-block">
+            <span class="kpi-label">Market Value</span>
+            <span class="kpi-value">{{ summary.total_market_value | currency }}</span>
+        </div>
+        <div class="kpi-block">
+            <span class="kpi-label">Cost Basis</span>
+            <span class="kpi-value">{{ summary.total_cost_value | currency }}</span>
+        </div>
+        <div class="kpi-block">
+            <span class="kpi-label">Unrealized P&amp;L</span>
+            <span class="kpi-value {% if summary.total_unrealized_pl > 0 %}is-gain{% elif summary.total_unrealized_pl < 0 %}is-loss{% endif %}">
+                {{ summary.total_unrealized_pl | currency }}
+            </span>
+        </div>
+        <div class="kpi-block">
+            <span class="kpi-label">Unrealized P&amp;L %</span>
+            <span class="kpi-value {% if summary.total_unrealized_pl_pct and summary.total_unrealized_pl_pct > 0 %}is-gain{% elif summary.total_unrealized_pl_pct and summary.total_unrealized_pl_pct < 0 %}is-loss{% endif %}">
+                {{ summary.total_unrealized_pl_pct | percent if summary.total_unrealized_pl_pct is not none else '—' }}
+            </span>
+        </div>
+        <div class="kpi-block">
+            <span class="kpi-label">Positions</span>
+            <span class="kpi-value">{{ summary.position_count }}</span>
+            <span class="kpi-sub">+{{ summary.watch_only_count }} watch-only</span>
+        </div>
+        <div class="kpi-block">
+            <span class="kpi-label">Avg Sentiment</span>
+            <span class="kpi-value {% if summary.avg_sentiment_score and summary.avg_sentiment_score > 0 %}is-gain{% elif summary.avg_sentiment_score and summary.avg_sentiment_score < 0 %}is-loss{% endif %}">
+                {{ summary.avg_sentiment_score | percent if summary.avg_sentiment_score is not none else '—' }}
+            </span>
+        </div>
+        <div class="kpi-block">
+            <span class="kpi-label">Avg ML Risk</span>
+            <span class="kpi-value {% if summary.avg_ml_risk_score is not none and summary.avg_ml_risk_score >= 0.5 %}is-loss{% elif summary.avg_ml_risk_score is not none %}is-gain{% endif %}">
+                {{ "%.2f%%"|format(summary.avg_ml_risk_score * 100) if summary.avg_ml_risk_score is not none else '—' }}
+            </span>
+        </div>
+    </div>
+
+    <div class="row g-3 mt-1">
+        <!-- Add / update holding form -->
+        <div class="col-lg-6">
+            <div class="panel h-100">
+                <span class="section-label">Add / Update Position</span>
+                <form method="post" action="/portfolio/holdings/add" class="d-flex flex-column gap-2">
+                    <input type="hidden" name="user_name" value="{{ user_name }}">
+                    <input type="text" name="symbol" class="form-control" placeholder="Symbol (e.g. AAPL)" required>
+                    <input type="text" name="shares" class="form-control" placeholder="Shares (e.g. 10.5)" required>
+                    <input type="text" name="avg_cost_basis" class="form-control" placeholder="Avg cost basis per share (e.g. 150.25)" required>
+                    <input type="date" name="purchased_at" class="form-control" placeholder="Purchase date (optional)">
+                    <button type="submit" class="btn-terminal">Save Position</button>
+                    <span class="kpi-sub">Adding a symbol you already hold updates its shares and average cost basis.</span>
+                </form>
+            </div>
+        </div>
+
+        <!-- Watch-only form -->
+        <div class="col-lg-6">
+            <div class="panel h-100">
+                <span class="section-label">Watch a Symbol (No Position)</span>
+                <form method="post" action="/portfolio/watchlist/add" class="d-flex flex-column gap-2">
+                    <input type="hidden" name="user_name" value="{{ user_name }}">
+                    <input type="text" name="symbol" class="form-control" placeholder="Symbol (e.g. TSLA)" required>
+                    <button type="submit" class="btn-terminal-outline">Add to Watchlist</button>
+                    <span class="kpi-sub">No shares or cost basis — just track the symbol on this page, unchanged from the original watchlist behavior.</span>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sector concentration -->
+    <div class="panel mt-3">
+        <span class="section-label">Sector Concentration</span>
+        {% if sector_breakdown %}
+        <div id="sector-chart" style="height: 320px;"></div>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-state-title">No positions yet</div>
+            <div class="empty-state-detail">Add a position above to see sector concentration.</div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Holdings table -->
+    <div class="panel mt-3">
+        <span class="section-label">Holdings &amp; Watchlist</span>
+        {% if holdings %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Company</th>
+                        <th>Sector</th>
+                        <th class="text-end">Shares</th>
+                        <th class="text-end">Avg Cost</th>
+                        <th class="text-end">Last Price</th>
+                        <th class="text-end">Market Value</th>
+                        <th class="text-end">Unrealized P&amp;L</th>
+                        <th class="text-end">P&amp;L %</th>
+                        <th>Sentiment</th>
+                        <th class="text-end">ML Risk</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for h in holdings %}
+                    <tr>
+                        <td class="symbol-cell"><a href="/stocks/{{ h.symbol }}">{{ h.symbol }}</a></td>
+                        <td>{{ h.company_name or '—' }}</td>
+                        <td>{{ h.sector or '—' }}</td>
+                        <td class="text-end">
+                            {% if h.is_position %}{{ "%.4f"|format(h.shares) }}{% else %}
+                            <span class="text-muted">watch only</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">{{ h.avg_cost_basis | currency if h.avg_cost_basis is not none else '—' }}</td>
+                        <td class="text-end">{{ h.latest_close | currency if h.latest_close is not none else '—' }}</td>
+                        <td class="text-end">{{ h.market_value | currency if h.is_position and h.market_value is not none else '—' }}</td>
+                        <td class="text-end {% if h.unrealized_pl and h.unrealized_pl > 0 %}text-gain{% elif h.unrealized_pl and h.unrealized_pl < 0 %}text-loss{% endif %}">
+                            {{ h.unrealized_pl | currency if h.is_position and h.unrealized_pl is not none else '—' }}
+                        </td>
+                        <td class="text-end {% if h.unrealized_pl_pct and h.unrealized_pl_pct > 0 %}text-gain{% elif h.unrealized_pl_pct and h.unrealized_pl_pct < 0 %}text-loss{% endif %}">
+                            {{ h.unrealized_pl_pct | percent if h.is_position and h.unrealized_pl_pct is not none else '—' }}
+                        </td>
+                        <td>
+                            {% if h.sentiment_score is not none %}
+                            <span class="sentiment-badge is-{{ 'positive' if h.sentiment_score > 0 else ('negative' if h.sentiment_score < 0 else 'neutral') }}">
+                                {{ h.sentiment_score | percent }}
+                            </span>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">{{ "%.2f%%"|format(h.ml_risk_score * 100) if h.ml_risk_score is not none else '—' }}</td>
+                        <td>
+                            <form method="post" action="/portfolio/holdings/remove" onsubmit="return confirm('Remove {{ h.symbol }} from this portfolio?');">
+                                <input type="hidden" name="user_name" value="{{ user_name }}">
+                                <input type="hidden" name="symbol" value="{{ h.symbol }}">
+                                <button type="submit" class="btn-terminal-outline btn-sm">Remove</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-state-title">No holdings or watched symbols yet</div>
+            <div class="empty-state-detail">Use the forms above to add a position or watch a symbol.</div>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+
+{% if sector_breakdown %}
+<script>
+    const sectorLabels = {{ sector_breakdown | map(attribute='sector') | list | tojson }};
+    const sectorValues = {{ sector_breakdown | map(attribute='market_value') | list | tojson }};
+
+    Plotly.newPlot('sector-chart', [{
+        type: 'pie',
+        labels: sectorLabels,
+        values: sectorValues,
+        hole: 0.45,
+        textinfo: 'label+percent',
+        hoverinfo: 'label+value',
+    }], {
+        margin: { t: 10, b: 10, l: 10, r: 10 },
+        showlegend: true,
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        font: { color: getComputedStyle(document.body).getPropertyValue('--text-primary') || '#e6e6e6' },
+    }, { responsive: true, displayModeBar: false });
+</script>
+{% endif %}
+{% endblock %}
