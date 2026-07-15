@@ -76,29 +76,54 @@ def get_recent_news(limit: int = RECENT_NEWS_LIMIT) -> list[dict[str, Any]]:
         published_date, and url, ordered most-recent-first. Returns an
         empty list if no news has been loaded yet.
     """
+    return get_news(symbol=None, limit=limit)
+
+
+def get_news(symbol: str | None = None, limit: int = RECENT_NEWS_LIMIT) -> list[dict[str, Any]]:
+    """
+    Fetch recent news articles, optionally scoped to a single company —
+    used by both get_recent_news() (Market Overview page, Phase 5) and
+    the Phase 13 `GET /api/news` JSON endpoint.
+
+    Args:
+        symbol: If provided, only articles for this company are
+            returned. None returns articles across all tracked
+            companies.
+        limit: Maximum number of articles to return.
+
+    Returns:
+        A list of dicts with symbol, company_name, title, source,
+        published_date, and url, ordered most-recent-first. Empty list
+        if no matching news has been loaded yet (including if `symbol`
+        doesn't exist in the companies table — this function doesn't
+        itself distinguish "unknown symbol" from "known symbol, no
+        news"; callers that need a 404 for an unknown symbol should
+        check that separately).
+    """
     query = """
         SELECT c.symbol, c.company_name, na.title, na.source, na.published_date, na.url
         FROM news_articles na
         JOIN companies c ON c.company_id = na.company_id
+        WHERE %(symbol)s::text IS NULL OR c.symbol = %(symbol)s
         ORDER BY na.published_date DESC NULLS LAST
-        LIMIT %s;
+        LIMIT %(limit)s;
     """
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(query, (limit,))
+            cur.execute(query, {"symbol": symbol.upper() if symbol else None, "limit": limit})
             rows = cur.fetchall()
 
     return [
         {
-            "symbol": symbol,
+            "symbol": symbol_val,
             "company_name": company_name,
             "title": title,
             "source": source,
             "published_date": published_date,
             "url": url,
         }
-        for symbol, company_name, title, source, published_date, url in rows
+        for symbol_val, company_name, title, source, published_date, url in rows
     ]
 
 

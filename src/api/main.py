@@ -13,7 +13,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from src.api.routes import overview, portfolio, stock_detail
+from src.api.routes import api, overview, portfolio, stock_detail
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -41,6 +41,7 @@ app.mount("/static", StaticFiles(directory=str(API_DIR / "static")), name="stati
 app.include_router(overview.router)
 app.include_router(stock_detail.router)
 app.include_router(portfolio.router)
+app.include_router(api.router)
 
 
 @app.on_event("startup")
