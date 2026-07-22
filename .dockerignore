@@ -1,0 +1,63 @@
+# .dockerignore
+#
+# Keeps the build context small and the final image free of anything
+# that's either regenerable, dev-only, or shouldn't ship in an image
+# (secrets, local venv, git history).
+
+# Local virtual environment — the image builds its own venv in the
+# Dockerfile's builder stage.
+venv/
+.venv/
+
+# Python bytecode/cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+
+# Secrets — passed in via docker-compose's env_file/environment instead.
+.env
+.env.local
+
+# Git
+.git/
+.gitignore
+
+# Notebooks — Phase 4 EDA work, not used by the running application.
+notebooks/
+.ipynb_checkpoints/
+
+# Docs — not needed inside the image; read from the repo/GitHub instead.
+docs/
+
+# Large/regenerable data — mounted as volumes at runtime instead (see
+# docker-compose.yml), not baked into the image.
+data/raw/*
+data/processed/*
+data/external/*
+data/reports/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/external/.gitkeep
+!data/reports/.gitkeep
+vector_db/*
+!vector_db/.gitkeep
+models/*.pkl
+models/*.joblib
+
+# Logs
+logs/*
+!logs/.gitkeep
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Windows Task Scheduler scripts — irrelevant inside a Linux container.
+scripts/windows/
