@@ -42,3 +42,4 @@ Thumbs.db
 
 # Docker
 *.log
+!logs/.gitkeep

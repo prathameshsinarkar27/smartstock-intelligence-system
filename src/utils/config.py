@@ -54,6 +54,19 @@ class Settings:
         rag_embed_max_retries: How many times to retry a single
             embedding batch after a 429 RESOURCE_EXHAUSTED response
             before giving up on it.
+        scheduler_daily_time: "HH:MM" (24h) time the daily job (data
+            pipeline + sentiment scoring + ML predictions using the
+            already-trained model) runs, for both
+            src/scheduler/run_scheduler.py (Docker) and the Windows Task
+            Scheduler wrapper scripts.
+        scheduler_weekly_day: Three-letter day name ("mon".."sun") the
+            weekly job (model retraining + evaluation + a fresh
+            prediction pass) runs.
+        scheduler_weekly_time: "HH:MM" (24h) time the weekly job runs.
+        scheduler_timezone: IANA timezone name (e.g. "America/New_York")
+            the above two times are interpreted in. Defaults to UTC so
+            behavior is identical regardless of the host machine's/
+            container's local timezone unless explicitly overridden.
     """
 
     finnhub_api_key: str
@@ -72,6 +85,10 @@ class Settings:
     rag_embed_batch_size: int = 10
     rag_embed_inter_batch_delay_seconds: float = 1.0
     rag_embed_max_retries: int = 5
+    scheduler_daily_time: str = "18:00"
+    scheduler_weekly_day: str = "sun"
+    scheduler_weekly_time: str = "19:00"
+    scheduler_timezone: str = "UTC"
 
 
 def _get_required_env(key: str) -> str:
@@ -116,6 +133,10 @@ def load_settings() -> Settings:
         rag_embed_batch_size=int(os.getenv("RAG_EMBED_BATCH_SIZE", "10")),
         rag_embed_inter_batch_delay_seconds=float(os.getenv("RAG_EMBED_INTER_BATCH_DELAY_SECONDS", "1.0")),
         rag_embed_max_retries=int(os.getenv("RAG_EMBED_MAX_RETRIES", "5")),
+        scheduler_daily_time=os.getenv("SCHEDULER_DAILY_TIME", "18:00").strip(),
+        scheduler_weekly_day=os.getenv("SCHEDULER_WEEKLY_DAY", "sun").strip().lower(),
+        scheduler_weekly_time=os.getenv("SCHEDULER_WEEKLY_TIME", "19:00").strip(),
+        scheduler_timezone=os.getenv("SCHEDULER_TIMEZONE", "UTC").strip(),
     )
 
 
