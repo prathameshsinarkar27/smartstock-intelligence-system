@@ -1,17 +1,8 @@
 """
 technical_indicators.py
 
-Computes standard technical analysis indicators — SMA, EMA, RSI, MACD, and
-Bollinger Bands — from a company's historical price data.
-
-All indicator periods are configurable via function parameters; defaults
-follow the conventional values used across most charting platforms:
-    SMA:        20-day and 50-day
-    EMA:        12-day and 26-day
-    RSI:        14-day
-    MACD:       12/26/9 (fast EMA, slow EMA, signal EMA)
-    Bollinger:  20-day SMA basis, 2 standard deviations
-
+Computes technical indicators including SMA, EMA, RSI, MACD,
+and Bollinger Bands from historical price data.
 """
 
 from src.utils.logger import get_logger
@@ -30,17 +21,14 @@ DEFAULT_BOLLINGER_STD_DEV = 2.0
 
 def simple_moving_average(closes: list[float], period: int) -> list[float | None]:
     """
-    Compute the Simple Moving Average (SMA) over a rolling window.
+    Compute the Simple Moving Average (SMA).
 
     Args:
         closes: Closing prices, oldest first.
-        period: Window size in days, e.g. 20 for a 20-day SMA.
+        period: Rolling window size.
 
     Returns:
-        A list the same length as `closes`, with the first `period - 1`
-        entries as None (not enough data yet to compute a full window) and
-        the rest as the rolling mean of the trailing `period` closes.
-        Returns an all-None list if `closes` has fewer than `period` entries.
+        SMA values with None where insufficient data exists.
     """
     result: list[float | None] = [None] * len(closes)
 
@@ -59,22 +47,14 @@ def simple_moving_average(closes: list[float], period: int) -> list[float | None
 
 def exponential_moving_average(closes: list[float], period: int) -> list[float | None]:
     """
-    Compute the Exponential Moving Average (EMA), which weights recent
-    prices more heavily than older ones.
-
-    The first valid EMA value is seeded with a Simple Moving Average over
-    the first `period` closes (the standard convention), after which each
-    subsequent value is computed with the smoothing formula:
-        EMA[i] = close[i] * k + EMA[i-1] * (1 - k),  where k = 2 / (period + 1)
+    Compute the Exponential Moving Average (EMA).
 
     Args:
         closes: Closing prices, oldest first.
-        period: Smoothing window in days, e.g. 12 for a 12-day EMA.
+        period: Smoothing window size.
 
     Returns:
-        A list the same length as `closes`, with the first `period - 1`
-        entries as None, and the rest as the EMA value at that index.
-        Returns an all-None list if `closes` has fewer than `period` entries.
+        EMA values with None where insufficient data exists.
     """
     result: list[float | None] = [None] * len(closes)
 
@@ -98,26 +78,14 @@ def exponential_moving_average(closes: list[float], period: int) -> list[float |
 
 def relative_strength_index(closes: list[float], period: int = DEFAULT_RSI_PERIOD) -> list[float | None]:
     """
-    Compute the Relative Strength Index (RSI), a momentum oscillator
-    ranging from 0-100. Conventionally, RSI > 70 suggests an asset may be
-    overbought and RSI < 30 suggests it may be oversold — see
-    `interpret_rsi()` for how this module labels those thresholds.
-
-    Uses Wilder's smoothing method (the standard RSI convention): the
-    first average gain/loss is a simple average over the first `period`
-    day-over-day changes, and subsequent averages are smoothed using the
-    same exponential-style formula Wilder originally defined.
+    Compute the Relative Strength Index (RSI) using Wilder's smoothing.
 
     Args:
         closes: Closing prices, oldest first.
-        period: Lookback window in days, conventionally 14.
+        period: Lookback window.
 
     Returns:
-        A list the same length as `closes`, with the first `period`
-        entries as None (RSI needs `period` day-over-day changes, which
-        requires `period + 1` prices), and the rest as the RSI value
-        (0-100) at that index. Returns an all-None list if `closes` has
-        fewer than `period + 1` entries.
+        RSI values from 0-100 with None where insufficient data exists.
     """
     result: list[float | None] = [None] * len(closes)
 
@@ -137,8 +105,7 @@ def relative_strength_index(closes: list[float], period: int = DEFAULT_RSI_PERIO
         rs = avg_gain / avg_loss
         return 100 - (100 / (1 + rs))
 
-    # changes[period - 1] is the day-over-day change ending at closes[period],
-    # so the first computable RSI value aligns with index `period` in closes.
+    # First RSI value aligns with closes[period].
     result[period] = _rsi_from_averages(avg_gain, avg_loss)
 
     for i in range(period, len(changes)):
@@ -157,25 +124,16 @@ def macd(
     signal_period: int = DEFAULT_MACD_SIGNAL,
 ) -> dict[str, list[float | None]]:
     """
-    Compute MACD (Moving Average Convergence Divergence): the difference
-    between a fast and slow EMA (the "MACD line"), an EMA of that
-    difference (the "signal line"), and the difference between the two
-    (the "histogram") — used to spot momentum shifts.
+    Compute MACD, signal line, and histogram.
 
     Args:
         closes: Closing prices, oldest first.
-        fast_period: Fast EMA window, conventionally 12.
-        slow_period: Slow EMA window, conventionally 26.
-        signal_period: Signal line EMA window, conventionally 9.
+        fast_period: Fast EMA window.
+        slow_period: Slow EMA window.
+        signal_period: Signal EMA window.
 
     Returns:
-        A dict with three lists, each the same length as `closes`:
-            - "macd_line": fast EMA minus slow EMA.
-            - "signal_line": EMA of the MACD line.
-            - "histogram": macd_line minus signal_line.
-        Entries are None wherever there isn't enough data yet for that
-        particular series (the signal line and histogram start later than
-        the MACD line, since the signal line is itself a derived EMA).
+        MACD line, signal line, and histogram values.
     """
     fast_ema = exponential_moving_average(closes, fast_period)
     slow_ema = exponential_moving_average(closes, slow_period)
@@ -185,9 +143,7 @@ def macd(
         for f, s in zip(fast_ema, slow_ema)
     ]
 
-    # The signal line is an EMA of the MACD line itself, computed only over
-    # the contiguous non-None tail of macd_line (everything before the
-    # slow EMA has converged is undefined, not just "missing").
+    # Calculate the signal EMA from the valid MACD values.
     first_valid_index = next((i for i, v in enumerate(macd_line) if v is not None), None)
 
     signal_line: list[float | None] = [None] * len(closes)
@@ -217,22 +173,15 @@ def bollinger_bands(
     num_std_dev: float = DEFAULT_BOLLINGER_STD_DEV,
 ) -> dict[str, list[float | None]]:
     """
-    Compute Bollinger Bands: a moving average ("middle band") plus and
-    minus a multiple of the rolling standard deviation ("upper"/"lower"
-    bands) — used to visualize volatility and potential overbought/
-    oversold conditions relative to recent price action.
+    Compute Bollinger Bands from a rolling mean and standard deviation.
 
     Args:
         closes: Closing prices, oldest first.
-        period: Window size for the moving average and std dev, conventionally 20.
-        num_std_dev: Number of standard deviations for the upper/lower bands,
-            conventionally 2.
+        period: Rolling window size.
+        num_std_dev: Standard deviation multiplier.
 
     Returns:
-        A dict with three lists, each the same length as `closes`:
-            "middle_band" (the SMA), "upper_band", "lower_band". Entries
-            are None for the first `period - 1` indices, same as
-            simple_moving_average().
+        Middle, upper, and lower Bollinger Bands.
     """
     middle_band = simple_moving_average(closes, period)
     upper_band: list[float | None] = [None] * len(closes)
@@ -255,16 +204,13 @@ def bollinger_bands(
 
 def interpret_rsi(latest_rsi: float | None) -> str:
     """
-    Translate the latest RSI value into a conventional signal label, for
-    display on the Company Detail page.
+    Convert the latest RSI value into a signal label.
 
     Args:
-        latest_rsi: The most recent RSI value (0-100), or None if not
-            enough data exists to compute one yet.
+        latest_rsi: Most recent RSI value.
 
     Returns:
-        "Overbought" if RSI > 70, "Oversold" if RSI < 30, "Neutral"
-        otherwise, or "—" if latest_rsi is None.
+        Overbought, Oversold, Neutral, or —.
     """
     if latest_rsi is None:
         return "—"
@@ -277,16 +223,14 @@ def interpret_rsi(latest_rsi: float | None) -> str:
 
 def interpret_macd_crossover(latest_macd_line: float | None, latest_signal_line: float | None) -> str:
     """
-    Translate the latest MACD line vs. signal line relationship into a
-    conventional signal label.
+    Convert the MACD/signal relationship into a signal label.
 
     Args:
-        latest_macd_line: The most recent MACD line value, or None.
-        latest_signal_line: The most recent signal line value, or None.
+        latest_macd_line: Latest MACD line value.
+        latest_signal_line: Latest signal line value.
 
     Returns:
-        "Bullish" if the MACD line is above the signal line, "Bearish" if
-        below, "—" if either value is unavailable yet.
+        Bullish, Bearish, or — when data is unavailable.
     """
     if latest_macd_line is None or latest_signal_line is None:
         return "—"
@@ -295,19 +239,13 @@ def interpret_macd_crossover(latest_macd_line: float | None, latest_signal_line:
 
 def compute_all_indicators(closes: list[float]) -> dict[str, object]:
     """
-    Compute the full suite of technical indicators for a price series, all
-    at default/conventional periods, in one call — the shape the Company
-    Detail page's chart-data endpoint and template need.
+    Compute all technical indicators using default periods.
 
     Args:
         closes: Closing prices, oldest first.
 
     Returns:
-        A dict with keys: sma_20, sma_50, ema_12, ema_26, rsi_14, macd
-        (a dict with macd_line/signal_line/histogram), bollinger (a dict
-        with middle_band/upper_band/lower_band). Each series is a list the
-        same length as `closes`, with leading Nones where insufficient
-        data exists, per each function's own docstring above.
+        Dictionary containing SMA, EMA, RSI, MACD, and Bollinger Bands.
     """
     return {
         "sma_20": simple_moving_average(closes, DEFAULT_SMA_PERIODS[0]),

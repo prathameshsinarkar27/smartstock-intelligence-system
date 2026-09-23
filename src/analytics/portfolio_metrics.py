@@ -1,12 +1,8 @@
 """
 portfolio_metrics.py
 
-Computes Portfolio Analyzer metrics for a single user's holdings:
-per-holding market value / cost value / unrealized P&L, a portfolio-wide
-summary, and sector concentration — built on top of the `watchlist` table
-and `watchlist_overview` view (database/views.sql)
-
-A "holding" here means a watchlist row with shares > 0 (a real position).
+Computes Portfolio Analyzer metrics including holding values,
+unrealized P&L, portfolio summary, and sector concentration.
 """
 
 from typing import Any
@@ -19,25 +15,15 @@ logger = get_logger(__name__)
 
 def get_portfolio_holdings(user_name: str) -> list[dict[str, Any]]:
     """
-    Fetch every watchlist/portfolio row for a user (both real positions
-    and watch-only entries), enriched with sentiment and ML risk where
-    available.
+    Fetch a user's watchlist and portfolio holdings with sentiment
+    and ML risk data where available.
 
     Args:
-        user_name: The watchlist owner to fetch rows for.
+        user_name: Watchlist owner.
 
     Returns:
-        A list of dicts, one per watchlist row, each with:
-            watchlist_id, symbol, company_name, sector,
-            shares, avg_cost_basis, purchased_at,
-            latest_close, latest_price_date,
-            market_value, cost_value, unrealized_pl, unrealized_pl_pct,
-            is_position (bool — True if shares > 0),
-            sentiment_score (signed -100..100, or None),
-            ml_risk_score (0..1, or None).
-        Ordered by market_value descending (real positions first, largest
-        first), then by symbol for watch-only rows. Empty list if the
-        user has no watchlist entries yet.
+        List of watchlist entries with holding, price, P&L,
+        sentiment, and risk metrics.
     """
     query = """
         SELECT
@@ -108,13 +94,10 @@ def _sentiment_score(
     neutral_count: int | None,
 ) -> float | None:
     """
-    Reduce sentiment_scores counts to the same signed -100..100 scale used
-    by the Company Detail page's Sentiment Score KPI (Phase 7), so the
-    Portfolio page can show a consistent number per holding.
+    Convert sentiment counts to a signed -100..100 score.
 
     Returns:
-        100 * (positive - negative) / total, rounded to 1 decimal, or
-        None if the company has no scored articles at all.
+        Score from -100 to 100, or None if no scored articles exist.
     """
     total = (positive_count or 0) + (negative_count or 0) + (neutral_count or 0)
     if total == 0:
@@ -124,26 +107,13 @@ def _sentiment_score(
 
 def get_portfolio_summary(user_name: str) -> dict[str, Any]:
     """
-    Aggregate a user's real positions (shares > 0) into portfolio-wide
-    totals for the Portfolio page's KPI row.
+    Aggregate a user's real positions into portfolio-wide metrics.
 
     Args:
-        user_name: The watchlist owner to summarize.
+        user_name: Watchlist owner.
 
     Returns:
-        A dict with:
-            - position_count: number of real holdings (shares > 0).
-            - watch_only_count: number of watch-only entries (shares = 0).
-            - total_market_value: sum of market_value across positions.
-            - total_cost_value: sum of cost_value across positions.
-            - total_unrealized_pl: total_market_value - total_cost_value.
-            - total_unrealized_pl_pct: total P&L as a % of total cost.
-            - avg_sentiment_score: mean sentiment_score across positions
-              that have scored news (None if none do).
-            - avg_ml_risk_score: mean ml_risk_score across positions that
-              have a prediction (None if none do).
-        All numeric totals are 0/None-safe if the user has no positions
-        yet (watch-only entries or an empty watchlist).
+        Portfolio totals, P&L, sentiment, and ML risk metrics.
     """
     holdings = get_portfolio_holdings(user_name)
     positions = [h for h in holdings if h["is_position"]]
@@ -175,17 +145,13 @@ def get_portfolio_summary(user_name: str) -> dict[str, Any]:
 
 def get_sector_concentration(user_name: str) -> list[dict[str, Any]]:
     """
-    Break a user's real positions (shares > 0) down by sector, for the
-    Portfolio page's sector concentration chart.
+    Calculate sector-wise portfolio concentration.
 
     Args:
-        user_name: The watchlist owner to analyze.
+        user_name: Watchlist owner.
 
     Returns:
-        A list of dicts with sector, market_value, and pct_of_portfolio,
-        sorted by market_value descending. Positions with no known sector
-        (company not yet loaded via the pipeline) are grouped under
-        "Unknown". Empty list if the user has no real positions.
+        Sector market values and portfolio percentages.
     """
     holdings = get_portfolio_holdings(user_name)
     positions = [h for h in holdings if h["is_position"]]

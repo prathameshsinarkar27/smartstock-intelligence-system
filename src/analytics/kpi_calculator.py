@@ -1,13 +1,8 @@
-"""
-kpi_calculator.py
+# kpi_calculator.py
+#
+# Computes KPI metrics for the Market Overview and Company Detail pages:
+# price, daily change, market cap, volume, P/E, and available high/low range.
 
-Computes the KPI metrics shown on the dashboard's Market Overview and
-Company Detail pages: current price, daily % change, market cap, trading
-volume, P/E ratio, and high/low over the available price history (the
-blueprint's "52-Week High/Low" cards, computed over whatever date range is
-actually loaded — see the docstring on `get_company_kpis` for why).
-
-"""
 
 from datetime import date
 from typing import Any
@@ -20,21 +15,11 @@ logger = get_logger(__name__)
 
 def get_market_overview_kpis() -> dict[str, Any]:
     """
-    Compute market-wide KPI metrics across all tracked companies, for the
-    Market Overview page's top KPI row.
+    Compute market-wide KPI metrics for the Market Overview page.
 
     Returns:
-        A dict with:
-            - total_companies: count of rows in the companies table.
-            - total_sectors: count of distinct non-null sectors.
-            - advancers_count: companies whose latest close is higher than
-              their previous close.
-            - decliners_count: companies whose latest close is lower than
-              their previous close.
-            - avg_daily_change_pct: average daily % change across all
-              companies with at least two days of price history.
-        All counts are 0 and avg_daily_change_pct is None if no companies
-        are loaded yet.
+        Total companies and sectors, advancing/declining counts,
+        and average daily percentage change.
     """
     query = """
         WITH ranked_prices AS (
@@ -90,27 +75,10 @@ def get_market_overview_kpis() -> dict[str, Any]:
 
 def _get_company_sentiment_score(conn: Any, company_id: int) -> float | None:
     """
-    Compute a single signed sentiment figure for a company's Sentiment
-    Score KPI card, from its scored news articles
-    (src/sentiment/sentiment_pipeline.py, Phase 7).
-
-    Each scored article contributes its confidence_score with a sign
-    matching its label (+confidence for positive, -confidence for
-    negative, 0 for neutral), and the figure is the mean of those signed
-    values across all scored articles, scaled to a -100..100 range so it
-    renders through the same `| percent` template filter used by
-    daily_change_pct elsewhere on this page.
-
-    Args:
-        conn: An open database connection (reused from the caller's
-            get_connection() block rather than opening a second one).
-        company_id: The company's surrogate key.
+    Compute the signed sentiment score for a company.
 
     Returns:
-        The signed sentiment figure in [-100, 100], or None if the
-        company has no scored news articles yet (distinct from a
-        computed 0.0, which means the scored articles average out to
-        neutral).
+        Score from -100 to 100, or None if no scored articles exist.
     """
     query = """
         SELECT ss.sentiment, ss.confidence_score
@@ -141,21 +109,10 @@ def _get_company_sentiment_score(conn: Any, company_id: int) -> float | None:
 
 def _get_company_ml_risk_score(conn: Any, company_id: int) -> float | None:
     """
-    Fetch a company's most recent ML-predicted risk score for the ML Risk
-    Score KPI card, from the predictions table
-    (src/ml/predict.py, Phase 8).
-
-    Args:
-        conn: An open database connection (reused from the caller's
-            get_connection() block).
-        company_id: The company's surrogate key.
+    Fetch the latest ML risk score for a company.
 
     Returns:
-        The risk_score from that company's row in the latest_predictions
-        view (database/views.sql) — already in [0, 1], representing the
-        model ensemble's estimated probability of a downward move over
-        its prediction horizon (see src/ml/predict.py's module docstring)
-        — or None if predict.py hasn't been run for this company yet.
+        Risk score from 0 to 1, or None if no prediction exists.
     """
     query = """
         SELECT risk_score
@@ -172,42 +129,14 @@ def _get_company_ml_risk_score(conn: Any, company_id: int) -> float | None:
 
 def get_company_kpis(symbol: str) -> dict[str, Any] | None:
     """
-    Compute the full set of KPI metrics for a single company's Company
-    Detail page.
+    Compute KPI metrics for a company's detail page.
 
-    The blueprint calls for "52-Week High/Low" cards. Computing a true
-    52-week figure requires a full year of loaded price history, which may
-    not exist yet depending on how much data has been ingested (see
-    docs/PHASE_5_TESTING_GUIDE.md). Rather than mislabel a shorter range as
-    "52-week," this function computes high/low over whatever date range is
-    actually available and returns that range's start/end dates alongside
-    the figures, so the template can show an accurate tooltip/subtitle
-    (e.g. "High/Low over available data: Apr 20 - Jun 20, 2026") instead of
-    a potentially misleading fixed label.
-
-    Args:
-        symbol: Stock ticker symbol, e.g. "AAPL".
+    High/low values use the available price history rather than assuming
+    a full 52-week period.
 
     Returns:
-        None if the symbol has no row in the companies table. Otherwise a
-        dict with:
-            - symbol, company_name, sector, industry
-            - current_price, previous_close, daily_change_pct
-            - market_cap, pe_ratio
-            - volume (latest day's volume)
-            - period_high, period_low: high/low over available price history
-            - period_start_date, period_end_date: the actual date range
-              period_high/period_low were computed over
-            - sentiment_score: signed mean sentiment across this
-              company's scored news articles, in [-100, 100] (Phase 7).
-              None if no articles have been scored yet.
-            - ml_risk_score: the model ensemble's most recent estimated
-              probability of a downward price move, in [0, 1] (Phase 8,
-              see src/ml/predict.py). None if predict.py hasn't been run
-              for this company yet.
-            - ai_recommendation: always None (see module docstring) —
-              Phase 10's AI outlook is surfaced separately, not through
-              this function.
+        Company details, price metrics, sentiment, ML risk score,
+        and available price range.
     """
     company_query = """
         SELECT company_id, symbol, company_name, sector, industry, market_cap, pe_ratio
@@ -234,15 +163,12 @@ def get_company_kpis(symbol: str) -> dict[str, Any] | None:
             cur.execute(price_history_query, (company_id,))
             price_rows = cur.fetchall()
 
-        # Computed here (Phase 7) while the connection is still open, since
-        # it's independent of price history and needed in both branches
-        # below (a company can have scored news with no price data yet,
-        # or vice versa).
+        # Calculate sentiment and ML risk while the connection is open.
         sentiment_score = _get_company_sentiment_score(conn, company_id)
         ml_risk_score = _get_company_ml_risk_score(conn, company_id)
 
     if not price_rows:
-        # Company exists but has no price history loaded yet.
+        # Company exists but has no price history.
         return {
             "symbol": db_symbol,
             "company_name": company_name,
@@ -290,26 +216,16 @@ def get_company_kpis(symbol: str) -> dict[str, Any] | None:
         "period_end_date": max(dates),
         "sentiment_score": sentiment_score,
         "ml_risk_score": ml_risk_score,
-        # Reserved for Phase 10 — see module docstring.
+        # Reserved for future AI outlook integration.
         "ai_recommendation": None,
     }
 
 
 def get_top_movers(limit: int = 5) -> dict[str, list[dict[str, Any]]]:
     """
-    Compute the top gaining and top losing companies by daily % change,
-    for the Market Overview page's "Top Gainers & Top Losers" section.
+    Compute the top gaining and losing companies by daily percentage change.
 
-    Args:
-        limit: Maximum number of companies to return per list.
-
-    Returns:
-        A dict with "gainers" and "losers" keys, each a list of dicts with
-        symbol, company_name, current_price, and daily_change_pct, sorted
-        descending (gainers) / ascending (losers) by daily_change_pct.
-        Companies with fewer than two days of price history are excluded,
-        since a daily % change cannot be computed for them. Both lists are
-        empty if no companies have at least two days of history yet.
+    Companies with fewer than two price records are excluded.
     """
     query = """
         WITH ranked_prices AS (
@@ -366,14 +282,9 @@ def get_top_movers(limit: int = 5) -> dict[str, list[dict[str, Any]]]:
 
 def get_sector_performance() -> list[dict[str, Any]]:
     """
-    Compute average daily % change per sector, for the Market Overview
-    page's "Sector Performance" section.
+    Compute average daily percentage change for each sector.
 
-    Returns:
-        A list of dicts with sector, company_count, and
-        avg_daily_change_pct, sorted descending by avg_daily_change_pct.
-        Sectors where no company has at least two days of price history
-        are excluded. Returns an empty list if no companies are loaded yet.
+    Sectors without sufficient price history are excluded.
     """
     query = """
         WITH ranked_prices AS (
