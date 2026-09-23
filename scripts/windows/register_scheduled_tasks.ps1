@@ -1,23 +1,18 @@
 # register_scheduled_tasks.ps1
 #
-# Registers two Windows Task Scheduler tasks that call
-# run_daily_job.ps1 / run_weekly_job.ps1 on a recurring schedule —
-# the Windows-native alternative to the Docker `scheduler` service
-# (src/scheduler/run_scheduler.py) for a local, non-Docker setup.
+# Registers Windows Task Scheduler tasks for daily and weekly jobs.
+# Provides a local alternative to the Docker scheduler.
 #
-#   powershell -ExecutionPolicy Bypass -File scripts\windows\register_scheduled_tasks.ps1
+# powershell -ExecutionPolicy Bypass -File scripts\windows\register_scheduled_tasks.ps1
 #
-# Optional parameters (defaults match .env.example's SCHEDULER_* values):
-#   -DailyTime "18:00"        Time the daily job runs (24h HH:mm).
-#   -WeeklyDay "Sunday"       Day the weekly job runs (Monday..Sunday).
-#   -WeeklyTime "19:00"       Time the weekly job runs (24h HH:mm).
-#   -RunWhenLoggedOff         If set, the task runs even when no user is
-#                             logged in (requires an elevated prompt and
-#                             will prompt for your Windows password once,
-#                             to store credentials for unattended runs).
+# Parameters:
+#   -DailyTime "18:00"        Daily job time (24h HH:mm).
+#   -WeeklyDay "Sunday"       Weekly job day.
+#   -WeeklyTime "19:00"       Weekly job time (24h HH:mm).
+#   -RunWhenLoggedOff         Runs the task when the user is logged off.
 #
-# Example with custom times:
-#   powershell -ExecutionPolicy Bypass -File scripts\windows\register_scheduled_tasks.ps1 -DailyTime "06:30" -WeeklyDay "Saturday" -WeeklyTime "07:00"
+# Example:
+# powershell -ExecutionPolicy Bypass -File scripts\windows\register_scheduled_tasks.ps1 -DailyTime "06:30" -WeeklyDay "Saturday" -WeeklyTime "07:00"
 
 param(
     [string]$DailyTime = "18:00",
