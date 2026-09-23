@@ -1,8 +1,7 @@
 """
 load_to_db.py
 
-Loads transformed CSVs (from transform_data.py, in data/processed/) into the
-PostgreSQL warehouse defined in database/tables.sql.
+Loads transformed CSVs into the PostgreSQL warehouse.
 
 Usage:
     python -m src.etl.load_to_db --symbols AAPL MSFT
@@ -22,23 +21,23 @@ logger = get_logger(__name__)
 
 
 class DataLoadError(Exception):
-    """Raised when a processed CSV is missing or cannot be loaded into the database."""
+    """Raised when a processed CSV is missing or cannot be loaded."""
 
 
 def _processed_dir() -> Path:
-    """Return the data/processed/ directory, derived from settings.data_raw_dir."""
+    """Return the processed data directory."""
     return settings.data_raw_dir.parent / "processed"
 
 
 def _read_processed_csv(filename: str) -> pd.DataFrame:
     """
-    Read a processed CSV file produced by transform_data.py.
+    Read a processed CSV file.
 
     Args:
-        filename: Filename within data/processed/, e.g. "companies_processed.csv".
+        filename: Filename within the processed data directory.
 
     Returns:
-        A DataFrame with the file's contents.
+        DataFrame containing the file contents.
 
     Raises:
         DataLoadError: If the file does not exist.
@@ -51,19 +50,16 @@ def _read_processed_csv(filename: str) -> pd.DataFrame:
 
 def load_companies(df: pd.DataFrame) -> int:
     """
-    Upsert company rows into the companies table, keyed on symbol.
+    Upsert company rows into the companies table.
 
-    On conflict (symbol already exists), updates all fundamental fields and
-    bumps updated_at, so re-running ingestion/ETL refreshes existing
-    company records instead of erroring or duplicating them.
+    Existing symbols are updated so repeated ETL runs refresh
+    company records without creating duplicates.
 
     Args:
-        df: Transformed company DataFrame with columns matching
-            COMPANY_TARGET_COLUMNS from transform_data.py:
-            symbol, company_name, sector, industry, market_cap, pe_ratio, eps.
+        df: Transformed company DataFrame.
 
     Returns:
-        The number of rows upserted.
+        Number of rows upserted.
     """
     if df.empty:
         logger.warning("load_companies: received an empty DataFrame, nothing to load.")
@@ -109,16 +105,13 @@ def load_companies(df: pd.DataFrame) -> int:
 
 def _get_company_id_map(symbols: list[str]) -> dict[str, int]:
     """
-    Look up company_id for each symbol already present in the companies
-    table.
+    Resolve company IDs for the given symbols.
 
     Args:
-        symbols: List of stock ticker symbols to resolve.
+        symbols: Stock ticker symbols to resolve.
 
     Returns:
-        A dict mapping uppercase symbol -> company_id. Symbols not found
-        in the companies table are simply absent from the returned dict;
-        callers are responsible for handling missing symbols.
+        Mapping of uppercase symbols to company IDs.
     """
     upper_symbols = [s.upper() for s in symbols]
 
@@ -135,24 +128,19 @@ def _get_company_id_map(symbols: list[str]) -> dict[str, int]:
 
 def load_prices(symbol: str, df: pd.DataFrame) -> int:
     """
-    Upsert price rows into the historical_prices table for a single symbol.
+    Upsert price rows into historical_prices for a symbol.
 
-    On conflict (company_id, date already exists), updates the OHLCV
-    values, so re-running ingestion/ETL refreshes existing candles instead
-    of erroring or duplicating them.
+    Existing company/date records are updated on repeated loads.
 
     Args:
-        symbol: Stock ticker symbol the rows belong to.
-        df: Transformed price DataFrame with columns matching
-            PRICE_TARGET_COLUMNS from transform_data.py:
-            symbol, date, open, high, low, close, volume.
+        symbol: Stock ticker symbol.
+        df: Transformed price DataFrame.
 
     Returns:
-        The number of rows upserted.
+        Number of rows upserted.
 
     Raises:
-        DataLoadError: If the symbol has no matching row in the companies
-            table (it must be loaded via load_companies() first).
+        DataLoadError: If the symbol is not present in companies.
     """
     if df.empty:
         logger.warning("load_prices: received an empty DataFrame for '%s', nothing to load.", symbol)
@@ -193,25 +181,19 @@ def load_prices(symbol: str, df: pd.DataFrame) -> int:
 
 def load_news(symbol: str, df: pd.DataFrame) -> int:
     """
-    Upsert news article rows into the news_articles table for a single
-    symbol.
+    Upsert news articles into news_articles for a symbol.
 
-    On conflict (company_id, url already exists), updates the article
-    fields, so re-running ingestion/ETL refreshes existing articles
-    instead of erroring or duplicating them.
+    Existing company/URL records are updated on repeated loads.
 
     Args:
-        symbol: Stock ticker symbol the rows belong to.
-        df: Transformed news DataFrame with columns matching
-            NEWS_TARGET_COLUMNS from transform_data.py:
-            symbol, title, content, source, published_date, url.
+        symbol: Stock ticker symbol.
+        df: Transformed news DataFrame.
 
     Returns:
-        The number of rows upserted.
+        Number of rows upserted.
 
     Raises:
-        DataLoadError: If the symbol has no matching row in the companies
-            table (it must be loaded via load_companies() first).
+        DataLoadError: If the symbol is not present in companies.
     """
     if df.empty:
         logger.warning("load_news: received an empty DataFrame for '%s', nothing to load.", symbol)
@@ -251,11 +233,10 @@ def load_news(symbol: str, df: pd.DataFrame) -> int:
 
 def run_load_companies() -> int:
     """
-    Read data/processed/companies_processed.csv and load it into the
-    companies table.
+    Load processed company data into the companies table.
 
     Returns:
-        The number of company rows upserted.
+        Number of company rows upserted.
 
     Raises:
         DataLoadError: If the processed file is missing.
@@ -266,17 +247,13 @@ def run_load_companies() -> int:
 
 def run_load_for_symbol(symbol: str) -> dict[str, int]:
     """
-    Read data/processed/{SYMBOL}_prices_processed.csv and
-    {SYMBOL}_news_processed.csv and load both into the warehouse for a
-    single symbol.
+    Load processed price and news data for a symbol.
 
     Args:
-        symbol: Stock ticker symbol, e.g. "AAPL".
+        symbol: Stock ticker symbol.
 
     Returns:
-        A dict mapping "prices" and "news" to the number of rows upserted
-        for each. A key is omitted if that data type failed to load (e.g.
-        the processed file was missing).
+        Row counts for successfully loaded prices and news.
     """
     results: dict[str, int] = {}
 
@@ -296,7 +273,7 @@ def run_load_for_symbol(symbol: str) -> dict[str, int]:
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments for standalone script execution."""
+    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Load processed ETL CSVs into the PostgreSQL warehouse.")
     parser.add_argument(
         "--symbols",
@@ -309,10 +286,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     """
-    Entry point for standalone script execution.
+    Run the database loading process.
 
-    Loads companies first (required for the foreign key lookups used by
-    prices/news), then loads prices and news for each requested symbol.
+    Companies are loaded first because prices and news depend on
+    company ID lookups.
     """
     args = parse_args()
 

@@ -1,13 +1,10 @@
 """
 clean_stock_data.py
 
-Cleans raw CSV data produced by src/ingestion/  before it is
-transformed (transform_data.py) and loaded into PostgreSQL (load_to_db.py).
+Cleans raw CSV data before transformation and loading into PostgreSQL.
 
-This is responsible ONLY for:
-    - Removing duplicate rows
-    - Removing rows with missing/invalid required values
-    - Fixing data types (strings -> numbers/dates where applicable)
+Handles duplicate removal, required-field validation, and data type
+conversion for price, company, and news data.
 
 Usage:
     python -m src.etl.clean_stock_data --symbols AAPL MSFT
@@ -31,16 +28,16 @@ class DataCleaningError(Exception):
 
 def _read_raw_csv(path: Path) -> pd.DataFrame:
     """
-    Read a raw CSV file produced by the ingestion layer.
+    Read a raw CSV file.
 
     Args:
         path: Path to the raw CSV file.
 
     Returns:
-        A DataFrame with the file's contents.
+        DataFrame containing the file contents.
 
     Raises:
-        DataCleaningError: If the file does not exist or cannot be parsed.
+        DataCleaningError: If the file is missing or cannot be parsed.
     """
     if not path.exists():
         raise DataCleaningError(f"Raw file not found: {path}")
@@ -55,39 +52,34 @@ def _read_raw_csv(path: Path) -> pd.DataFrame:
 
 def clean_price_data(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Clean a raw stock price DataFrame (from {SYMBOL}_prices_raw.csv).
+    Clean a raw stock price DataFrame.
 
-    Cleaning steps:
-        1. Drop rows with a missing/unparseable date.
-        2. Coerce open/high/low/close/volume to numeric, dropping rows
-           where any of them fail to parse.
-        3. Drop rows where high < low (physically invalid candle).
-        4. Drop exact duplicate (symbol, date) rows, keeping the first.
+    Validates dates and numeric fields, removes invalid candles,
+    and de-duplicates symbol/date records.
 
     Args:
-        df: Raw price DataFrame with columns:
-            symbol, timestamp, date, open, high, low, close, volume.
+        df: Raw price DataFrame.
 
     Returns:
-        A cleaned DataFrame with the same columns, fewer (or equal) rows.
+        Cleaned price DataFrame.
     """
     cleaned = df.copy()
     initial_count = len(cleaned)
 
-    # Step 1: valid date required.
+    # Require a valid date.
     cleaned["date"] = pd.to_datetime(cleaned["date"], errors="coerce")
     cleaned = cleaned.dropna(subset=["date"])
 
-    # Step 2: numeric coercion for price/volume columns.
+    # Convert price and volume fields to numeric.
     numeric_cols = ["open", "high", "low", "close", "volume"]
     for col in numeric_cols:
         cleaned[col] = pd.to_numeric(cleaned[col], errors="coerce")
     cleaned = cleaned.dropna(subset=numeric_cols)
 
-    # Step 3: physically invalid candles (high must be >= low).
+    # Remove physically invalid candles.
     cleaned = cleaned[cleaned["high"] >= cleaned["low"]]
 
-    # Step 4: de-duplicate on (symbol, date), keeping the first occurrence.
+    # Keep the first record for each symbol/date pair.
     cleaned = cleaned.drop_duplicates(subset=["symbol", "date"], keep="first")
 
     removed_count = initial_count - len(cleaned)
@@ -99,39 +91,32 @@ def clean_price_data(df: pd.DataFrame) -> pd.DataFrame:
 
 def clean_company_data(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Clean a raw company fundamentals DataFrame (from companies_raw.csv).
+    Clean a raw company fundamentals DataFrame.
 
-    Cleaning steps:
-        1. Drop rows with a missing symbol (the natural key).
-        2. Drop rows with a missing company_name (not useful without one).
-        3. Coerce market_cap/pe_ratio/eps to numeric, leaving NaN (rather
-           than dropping the row) for any that fail to parse, since a
-           company missing one fundamental metric is still useful data.
-        4. Drop exact duplicate symbol rows, keeping the first.
+    Validates required fields, converts optional numeric metrics,
+    and removes duplicate symbols.
 
     Args:
-        df: Raw company DataFrame with columns:
-            symbol, company_name, sector, industry, market_cap, pe_ratio,
-            eps, country, currency, exchange.
+        df: Raw company DataFrame.
 
     Returns:
-        A cleaned DataFrame with the same columns, fewer (or equal) rows.
+        Cleaned company DataFrame.
     """
     cleaned = df.copy()
     initial_count = len(cleaned)
 
-    # Step 1 & 2: required fields.
+    # Validate required fields.
     cleaned = cleaned.dropna(subset=["symbol"])
     cleaned = cleaned[cleaned["symbol"].astype(str).str.strip() != ""]
     cleaned = cleaned.dropna(subset=["company_name"])
     cleaned = cleaned[cleaned["company_name"].astype(str).str.strip() != ""]
 
-    # Step 3: numeric coercion, NaN allowed (not dropped) for optional metrics.
+    # Convert optional numeric metrics; invalid values become NaN.
     for col in ["market_cap", "pe_ratio", "eps"]:
         if col in cleaned.columns:
             cleaned[col] = pd.to_numeric(cleaned[col], errors="coerce")
 
-    # Step 4: de-duplicate on symbol, keeping the first occurrence.
+    # Keep the first record for each symbol.
     cleaned = cleaned.drop_duplicates(subset=["symbol"], keep="first")
 
     removed_count = initial_count - len(cleaned)
@@ -143,44 +128,34 @@ def clean_company_data(df: pd.DataFrame) -> pd.DataFrame:
 
 def clean_news_data(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Clean a raw news article DataFrame (from {SYMBOL}_news_raw.csv).
+    Clean a raw news article DataFrame.
 
-    Cleaning steps:
-        1. Drop rows with a missing/empty title (an article needs a title
-           to be useful for downstream sentiment analysis or display).
-        2. Drop rows with a missing/empty url (used as the dedup key here
-           and later as the uq_news_articles_company_url constraint key in
-           the database).
-        3. Coerce published_date to a parseable datetime, leaving NaT
-           (rather than dropping the row) if it fails to parse, since an
-           article missing a clean date is still useful content.
-        4. Drop exact duplicate (symbol, url) rows, keeping the first.
+    Validates title and URL fields, parses publication dates,
+    and removes duplicate symbol/URL records.
 
     Args:
-        df: Raw news DataFrame with columns:
-            symbol, title, content, source, published_date, url.
+        df: Raw news DataFrame.
 
     Returns:
-        A cleaned DataFrame with the same columns, fewer (or equal) rows.
+        Cleaned news DataFrame.
     """
     cleaned = df.copy()
     initial_count = len(cleaned)
 
-    # Step 1: required title.
+    # Validate required title.
     cleaned = cleaned.dropna(subset=["title"])
     cleaned = cleaned[cleaned["title"].astype(str).str.strip() != ""]
 
-    # Step 2: required url.
+    # Validate required URL.
     cleaned = cleaned.dropna(subset=["url"])
     cleaned = cleaned[cleaned["url"].astype(str).str.strip() != ""]
 
-    # Step 3: best-effort date parsing; UTC to avoid tz-naive/tz-aware
-    # comparison issues later, NaT allowed.
+    # Parse dates as UTC; invalid values become NaT.
     cleaned["published_date"] = pd.to_datetime(
         cleaned["published_date"], errors="coerce", utc=True
     )
 
-    # Step 4: de-duplicate on (symbol, url), keeping the first occurrence.
+    # Keep the first record for each symbol/URL pair.
     cleaned = cleaned.drop_duplicates(subset=["symbol", "url"], keep="first")
 
     removed_count = initial_count - len(cleaned)
@@ -192,14 +167,14 @@ def clean_news_data(df: pd.DataFrame) -> pd.DataFrame:
 
 def clean_prices_for_symbol(symbol: str, raw_dir: Path | None = None) -> pd.DataFrame:
     """
-    Read and clean the raw price CSV for a single symbol.
+    Read and clean raw price data for a symbol.
 
     Args:
-        symbol: Stock ticker symbol, e.g. "AAPL".
-        raw_dir: Directory containing raw CSVs. Defaults to settings.data_raw_dir.
+        symbol: Stock ticker symbol.
+        raw_dir: Directory containing raw CSVs.
 
     Returns:
-        A cleaned price DataFrame for the symbol.
+        Cleaned price DataFrame.
 
     Raises:
         DataCleaningError: If the raw file is missing or unreadable.
@@ -212,14 +187,14 @@ def clean_prices_for_symbol(symbol: str, raw_dir: Path | None = None) -> pd.Data
 
 def clean_news_for_symbol(symbol: str, raw_dir: Path | None = None) -> pd.DataFrame:
     """
-    Read and clean the raw news CSV for a single symbol.
+    Read and clean raw news data for a symbol.
 
     Args:
-        symbol: Stock ticker symbol, e.g. "AAPL".
-        raw_dir: Directory containing raw CSVs. Defaults to settings.data_raw_dir.
+        symbol: Stock ticker symbol.
+        raw_dir: Directory containing raw CSVs.
 
     Returns:
-        A cleaned news DataFrame for the symbol.
+        Cleaned news DataFrame.
 
     Raises:
         DataCleaningError: If the raw file is missing or unreadable.
@@ -232,13 +207,13 @@ def clean_news_for_symbol(symbol: str, raw_dir: Path | None = None) -> pd.DataFr
 
 def clean_companies(raw_dir: Path | None = None) -> pd.DataFrame:
     """
-    Read and clean the combined raw companies CSV.
+    Read and clean the combined company data.
 
     Args:
-        raw_dir: Directory containing raw CSVs. Defaults to settings.data_raw_dir.
+        raw_dir: Directory containing raw CSVs.
 
     Returns:
-        A cleaned company DataFrame.
+        Cleaned company DataFrame.
 
     Raises:
         DataCleaningError: If the raw file is missing or unreadable.
@@ -250,7 +225,7 @@ def clean_companies(raw_dir: Path | None = None) -> pd.DataFrame:
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments for standalone script execution."""
+    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
         description="Clean raw ingestion CSVs (prices, companies, news) for a list of symbols."
     )
@@ -265,11 +240,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     """
-    Entry point for standalone script execution. Cleans price and news data
-    per symbol, and the combined company file once, logging row counts.
-    This does not write any output files itself — it is intended primarily
-    as a manual verification tool; transform_data.py calls the clean_*
-    functions directly as part of the full pipeline.
+    Run the cleaning process for company, price, and news data.
+
+    This function logs results but does not write output files.
     """
     args = parse_args()
 
