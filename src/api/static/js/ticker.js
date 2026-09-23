@@ -1,11 +1,10 @@
 /**
  * ticker.js
  *
- * Populates the scrolling ticker strip in base.html from a JSON payload
- * embedded by the current page. Kept as a small standalone script
- * rather than inline in base.html so it can be cached by the browser
- * across page navigations.
+ * Builds the scrolling ticker strip from page-provided JSON.
+ * Kept standalone for browser caching across page navigations.
  */
+
 (function () {
     "use strict";
 

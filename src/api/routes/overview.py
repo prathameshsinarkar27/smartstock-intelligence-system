@@ -1,10 +1,8 @@
 """
 overview.py
 
-Route for the Market Overview page (the dashboard's landing page):
-market-wide KPI cards, search, top gainers/losers, sector performance,
-latest market news, and a filterable company table.
-
+Routes for the Market Overview page, including KPIs, search,
+top movers, sector performance, news, and company data.
 """
 
 from fastapi import APIRouter, Request
@@ -25,17 +23,12 @@ async def market_overview(request: Request, sector: str | None = None, search: s
     Render the Market Overview page.
 
     Args:
-        request: Injected by FastAPI; required by Jinja2Templates to build
-            url_for() links inside the template.
-        sector: Optional query parameter (?sector=Technology) to filter the
-            company table by exact sector match.
-        search: Optional query parameter (?search=apple) to filter the
-            company table by symbol or company name.
+        request: FastAPI request used by the Jinja2 template.
+        sector: Optional exact sector filter.
+        search: Optional symbol or company name filter.
 
     Returns:
-        The rendered overview.html template, with all KPI/news/company
-        data populated from the warehouse (or showing "no data yet"
-        empty states if nothing has been loaded via Phases 1-3.1).
+        Rendered overview.html template with market data.
     """
     page_data = build_overview_page_data(sector=sector, search=search)
 

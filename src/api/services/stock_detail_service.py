@@ -1,11 +1,7 @@
 """
 stock_detail_service.py
 
-Business logic for the Company Detail page (src/api/routes/stock_detail.py).
-
-Composes data from src/analytics/kpi_calculator.py,
-src/analytics/technical_indicators.py, and a direct price history query
-into the shape the Company Detail template (and its Plotly chart) needs.
+Business logic for the Company Detail page.
 """
 
 from typing import Any
@@ -26,27 +22,16 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Maximum number of individual articles shown in the Company Detail page's
-# News & Sentiment section. The aggregate counts (positive/negative/
-# neutral/total) below are computed over ALL scored articles, not just
-# this many — only the per-article list is capped, to keep the page from
-# growing unbounded for heavily-covered companies.
+# Maximum number of articles shown in the News & Sentiment section.
 SENTIMENT_ARTICLE_LIMIT = 10
 
 
 def get_price_history(symbol: str) -> list[dict[str, Any]]:
     """
-    Fetch the full OHLCV price history for a single company, oldest first
-    (the order a price chart and a "history table read top-to-bottom"
-    both expect).
-
-    Args:
-        symbol: Stock ticker symbol, e.g. "AAPL".
+    Fetch OHLCV price history for a company.
 
     Returns:
-        A list of dicts with date, open, high, low, close, volume, sorted
-        ascending by date. Empty list if the symbol doesn't exist or has
-        no price history loaded yet.
+        Price records sorted by date, or an empty list if unavailable.
     """
     query = """
         SELECT hp.date, hp.open, hp.high, hp.low, hp.close, hp.volume
@@ -76,21 +61,10 @@ def get_price_history(symbol: str) -> list[dict[str, Any]]:
 
 def get_latest_indicator_summary(price_history: list[dict[str, Any]]) -> dict[str, Any]:
     """
-    Compute the full technical indicator suite from a company's price
-    history and reduce it to the latest values, for the numeric summary
-    shown alongside the chart on the Company Detail page.
-
-    Args:
-        price_history: Output of get_price_history() — oldest-first list
-            of OHLCV dicts.
+    Compute technical indicators and return their latest values.
 
     Returns:
-        A dict with the latest value of each indicator (None if not
-        enough price history exists yet to compute it), plus a
-        human-readable signal label for RSI and MACD:
-            sma_20, sma_50, ema_12, ema_26, rsi_14, rsi_signal,
-            macd_line, macd_signal_line, macd_histogram, macd_signal,
-            bollinger_upper, bollinger_middle, bollinger_lower
+        Latest indicator values and signal labels.
     """
     closes = [row["close"] for row in price_history]
 
@@ -129,28 +103,7 @@ def get_latest_indicator_summary(price_history: list[dict[str, Any]]) -> dict[st
 
 def get_company_sentiment(symbol: str) -> dict[str, Any]:
     """
-    Fetch aggregated sentiment counts plus a capped list of individual
-    scored articles for a company, for the Company Detail page's News &
-    Sentiment section (src/sentiment/sentiment_pipeline.py, Phase 7).
-
-    Args:
-        symbol: Stock ticker symbol, e.g. "AAPL".
-
-    Returns:
-        A dict with:
-            - positive_count, negative_count, neutral_count,
-              total_scored_articles, avg_confidence_score: aggregates
-              over every scored article for this company (all 0/None if
-              none have been scored yet).
-            - articles: a list of up to SENTIMENT_ARTICLE_LIMIT dicts
-              (title, source, published_date, url, sentiment,
-              confidence_score), most-recently-published first. Empty
-              list if none scored yet.
-        Companies with news loaded but not yet scored (sentiment_pipeline
-        hasn't run) and companies with no news loaded at all both produce
-        this same "nothing scored" shape — the template distinguishes
-        them, if needed, via the separately-available news presence, but
-        both currently render the same empty state.
+    Fetch sentiment metrics and recent scored articles for a company.
     """
     aggregate_query = """
         SELECT positive_count, negative_count, neutral_count,
@@ -213,21 +166,10 @@ def get_company_sentiment(symbol: str) -> dict[str, Any]:
 
 def get_company_ml_prediction(symbol: str) -> dict[str, Any] | None:
     """
-    Fetch a company's most recent ML trend/risk prediction for the
-    Company Detail page's ML Predictions section
-    (src/ml/predict.py, Phase 8).
-
-    Args:
-        symbol: Stock ticker symbol, e.g. "AAPL".
+    Fetch the latest ML trend and risk prediction for a company.
 
     Returns:
-        A dict with prediction_date, trend_prediction ("up"/"down"/
-        "flat"), and risk_score (in [0, 1]) — sourced from the
-        latest_predictions view (database/views.sql), which already
-        keeps only each company's single most recent prediction row.
-        None if predict.py hasn't produced a prediction for this company
-        yet (distinct from an empty dict, so the template can tell "not
-        predicted yet" apart from "predicted, values pending").
+        Prediction data, or None if unavailable.
     """
     query = """
         SELECT prediction_date, trend_prediction, risk_score
@@ -253,23 +195,10 @@ def get_company_ml_prediction(symbol: str) -> dict[str, Any] | None:
 
 def get_company_ml_explanation(symbol: str, top_n: int = 5) -> dict[str, Any] | None:
     """
-    Explain a company's latest ML prediction with SHAP feature
-    contributions toward the "down" class — the same class risk_score is
-    defined over (src/explainability/shap_analysis.py, Phase 9).
-
-    Args:
-        symbol: Stock ticker symbol, e.g. "AAPL".
-        top_n: How many top-contributing features to return.
+    Generate a SHAP explanation for the latest ML prediction.
 
     Returns:
-        explain_company_prediction()'s output (target_class, symbol,
-        prediction_date, contributions), or None if either: this company
-        has no usable latest feature row (same condition
-        get_company_ml_prediction handles), or the models haven't been
-        trained yet at all (src/ml/train_model.py hasn't been run) — in
-        which case this is logged, not raised, since a missing
-        explanation should render as an empty state on the dashboard, not
-        a 500 error.
+        SHAP explanation, or None if unavailable.
     """
     try:
         return explain_company_prediction(symbol, top_n=top_n)
@@ -280,22 +209,10 @@ def get_company_ml_explanation(symbol: str, top_n: int = 5) -> dict[str, Any] | 
 
 def get_company_ai_analysis(symbol: str) -> dict[str, Any] | None:
     """
-    Get an AI-generated research summary for the Company Detail page's AI
-    Insights section and AI Recommendation KPI card
-    (src/genai/stock_assistant.py, Phase 10).
-
-    Args:
-        symbol: Stock ticker symbol, e.g. "AAPL".
+    Generate an AI research summary for a company.
 
     Returns:
-        None if either: the symbol isn't a tracked company, or generating
-        the analysis failed for a configuration or API reason (missing
-        GEMINI_API_KEY, a failed/malformed Gemini response) — both are
-        logged, not raised, so a missing AI analysis renders as an empty
-        state on the dashboard rather than a 500, the same pattern used
-        for ModelNotTrainedError in Phase 8/9. Otherwise
-        get_company_ai_insight()'s output: symbol, outlook, summary,
-        key_considerations, generated_at.
+        AI analysis, or None if unavailable.
     """
     try:
         return get_company_ai_insight(symbol)
@@ -309,33 +226,10 @@ def get_company_ai_analysis(symbol: str) -> dict[str, Any] | None:
 
 def build_company_detail_page_data(symbol: str) -> dict[str, Any] | None:
     """
-    Assemble everything the Company Detail template needs in one call.
-
-    Args:
-        symbol: Stock ticker symbol, e.g. "AAPL".
+    Assemble all data required by the Company Detail page.
 
     Returns:
-        None if the symbol has no row in the companies table (the route
-        should respond with a 404 in that case). Otherwise a dict with
-        keys: kpis (from get_company_kpis), price_history (oldest-first
-        list, possibly empty if no price data has been loaded yet for an
-        otherwise-valid company), indicators (latest technical indicator
-        values, from get_latest_indicator_summary() — all None if
-        price_history is empty or too short for a given indicator's
-        period), and sentiment (aggregate counts + article list, from
-        get_company_sentiment() — Phase 7).
-
-        Also includes ml_prediction: the latest trend/risk prediction
-        from get_company_ml_prediction() (Phase 8), None if no prediction
-        exists yet for this company. And ml_explanation: SHAP feature
-        contributions for that same prediction (Phase 9, from
-        get_company_ml_explanation()) — None if there's no prediction to
-        explain, or if the models haven't been trained yet.
-
-        Also includes ai_analysis: an AI-generated research summary
-        (Phase 10, from get_company_ai_analysis()) — None if generating
-        it failed (missing API key, API error) or the underlying data was
-        too thin to build a context from.
+        Company page data, or None if the company does not exist.
     """
     kpis = get_company_kpis(symbol)
     if kpis is None:
@@ -360,31 +254,10 @@ def build_company_detail_page_data(symbol: str) -> dict[str, Any] | None:
 
 def ask_about_report(symbol: str, question: str, top_k: int = 5) -> dict[str, Any]:
     """
-    Answer a question about a company's ingested annual report(s),
-    grounded in that company's PDF text via RAG (src.rag.rag_pipeline,
-    Phase 11). Powers the "Ask About This Company's Report" panel on the
-    Company Detail page — the first place this feature is reachable from
-    the dashboard itself, rather than only the RAG CLI or the JSON API's
-    POST /api/assistant/{symbol}/ask (Phase 13).
-
-    This function never raises: every failure mode (no report ingested,
-    Gemini not configured, the Gemini call itself failing) is caught and
-    turned into a dict the template can render an appropriate message
-    from, the same graceful-degradation pattern get_company_ai_analysis()
-    already uses for Phase 10's AI Insights panel just above this one.
-
-    Args:
-        symbol: Stock ticker symbol, e.g. "AAPL".
-        question: The user's question, from the panel's form field.
-        top_k: How many report excerpts to retrieve as context.
+    Answer a question using the company's ingested annual reports.
 
     Returns:
-        A dict with:
-            - question: the question asked (echoed back for the template)
-            - answer: the grounded answer text, or None if unavailable
-            - sources: list of {"source_file", "page"} dicts, or [] if unavailable
-            - error: a short, user-facing message explaining why answer
-              is None, or None if answer succeeded
+        Answer, sources, and any error message.
     """
     if not question or not question.strip():
         return {"question": question, "answer": None, "sources": [], "error": "Enter a question first."}

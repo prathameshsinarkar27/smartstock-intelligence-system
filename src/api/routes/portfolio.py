@@ -1,9 +1,8 @@
 """
 portfolio.py
 
-Routes for the Portfolio Analyzer page: view holdings/P&L/sector
-concentration for a user, and add/update/remove positions via simple
-HTML forms.
+Routes for the Portfolio Analyzer page, including holdings,
+P&L, sector concentration, and portfolio form actions.
 """
 
 from urllib.parse import quote
@@ -27,7 +26,7 @@ router = APIRouter()
 
 
 def _redirect_to_portfolio(user_name: str, error: str | None = None) -> RedirectResponse:
-    """Build a 303 redirect back to GET /portfolio, preserving the user and optionally an error message."""
+    """Build a redirect to the portfolio page with an optional error."""
     url = f"/portfolio?user={quote(user_name)}"
     if error:
         url += f"&error={quote(error)}"
@@ -37,22 +36,15 @@ def _redirect_to_portfolio(user_name: str, error: str | None = None) -> Redirect
 @router.get("/portfolio", response_class=HTMLResponse)
 async def portfolio_page(request: Request, user: str | None = None, error: str | None = None):
     """
-    Render the Portfolio Analyzer page for a given user.
+    Render the Portfolio Analyzer page.
 
     Args:
-        request: Injected by FastAPI; required by Jinja2Templates.
-        user: Optional query parameter (?user=jane) identifying whose
-            portfolio to display. Defaults to "default" (see
-            portfolio_service.DEFAULT_USER) so the page works with zero
-            setup — there's no login system in this project.
-        error: Optional query parameter carrying a validation error
-            message from a failed add/update/remove submission, rendered
-            as a dismissible banner.
+        request: FastAPI request used by the Jinja2 template.
+        user: Optional portfolio owner. Defaults to "default".
+        error: Optional validation error message.
 
     Returns:
-        The rendered portfolio.html template with holdings, summary
-        KPIs, and sector concentration populated (or empty/zeroed states
-        if the user has no watchlist entries yet).
+        Rendered portfolio.html template with portfolio data.
     """
     page_data = build_portfolio_page_data(user)
     page_data["error"] = error
@@ -72,11 +64,7 @@ async def add_holding(
     avg_cost_basis: str = Form(...),
     purchased_at: str = Form(""),
 ):
-    """
-    Handle the "Add / Update Holding" form: upsert a real position
-    (shares + avg_cost_basis) for a user, then redirect back to the
-    portfolio page.
-    """
+    """Add or update a portfolio holding, then redirect back."""
     resolved_user = (user_name or "").strip() or "default"
 
     try:
@@ -96,10 +84,7 @@ async def add_holding(
 
 @router.post("/portfolio/watchlist/add")
 async def add_to_watchlist(user_name: str = Form(...), symbol: str = Form(...)):
-    """
-    Handle the lighter-weight "Watch Symbol" form (no shares/cost basis —
-    the original Phase 0-11 watchlist behavior), then redirect back.
-    """
+    """Add a symbol to the watchlist without a position."""
     resolved_user = (user_name or "").strip() or "default"
 
     try:
@@ -113,7 +98,7 @@ async def add_to_watchlist(user_name: str = Form(...), symbol: str = Form(...)):
 
 @router.post("/portfolio/holdings/remove")
 async def remove_holding_route(user_name: str = Form(...), symbol: str = Form(...)):
-    """Handle the "Remove" button next to a holding/watch entry, then redirect back."""
+    """Remove a holding or watchlist entry, then redirect back."""
     resolved_user = (user_name or "").strip() or "default"
     remove_holding(user_name=resolved_user, symbol=symbol)
     return _redirect_to_portfolio(resolved_user)

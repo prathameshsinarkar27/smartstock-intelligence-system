@@ -1,23 +1,14 @@
 /*
-terminal.css
-
-Design system for the SmartStock Intelligence Platform dashboard.
-
-Token system:
-  Color   --bg-void:#0B0E11  --bg-panel:#12161C  --bg-panel-raised:#161B22
-          --line:#1F2630  --text-primary:#E8EAED  --text-muted:#7C8694
-          --accent:#F0A93C  --gain:#1FC97D  --loss:#FF4D5E
-  Type    Display: Archivo (600/700/800) — headers, brand, KPI values
-          Body: Inter (400/500/600) — paragraphs, nav, labels
-          Data: IBM Plex Mono (400/500/600) — all numerals, tickers, tables
-  Layout  Dense grid, 1px hairline dividers, 0 border-radius on data
-          surfaces (cards/tables/panels read as instrument panels, not
-          soft consumer UI). Generous internal padding to keep density
-          readable rather than cramped.
-  Signature  The ticker-strip: a continuously scrolling band of
-             symbol/price/change data across the very top of every page.
-*/
-
+ * terminal.css
+ *
+ * SmartStock dashboard design system.
+ *
+ * Colors: dark surfaces, muted text, amber accent, green gain, red loss.
+ * Fonts: Archivo for headings, Inter for UI text, IBM Plex Mono for data.
+ * Layout: dense grid, 1px dividers, sharp data surfaces, generous padding.
+ * Signature: scrolling ticker strip across the top of every page.
+ */
+ 
 :root {
     --bg-void: #0B0E11;
     --bg-panel: #12161C;

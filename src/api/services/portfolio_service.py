@@ -1,16 +1,9 @@
 """
 portfolio_service.py
 
-Business logic for the Portfolio Analyzer page (src/api/routes/portfolio.py).
-
-Follows the same split as overview_service.py / stock_detail_service.py:
-read-side aggregation lives in src/analytics/portfolio_metrics.py and is
-composed here into the exact shape the portfolio.html template needs.
-Write operations (add/update/remove a holding) are simple single-table
-upserts against `watchlist`, so — like overview_service.py's direct query
-for recent news — they're implemented directly here rather than added to
-the analytics module, which is read-only by convention.
+Business logic for the Portfolio Analyzer page.
 """
+
 
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -30,23 +23,18 @@ DEFAULT_USER = "default"
 
 
 class PortfolioInputError(ValueError):
-    """Raised when add/update holding form input fails validation."""
+    """Raised when portfolio form input is invalid."""
 
 
 def build_portfolio_page_data(user_name: str | None) -> dict[str, Any]:
     """
-    Assemble everything the Portfolio Analyzer page needs to render.
+    Build the data required by the Portfolio Analyzer page.
 
     Args:
-        user_name: The watchlist owner to display. Falls back to
-            DEFAULT_USER if blank/None, so the page always has something
-            sensible to show on first visit.
+        user_name: Portfolio owner. Defaults to DEFAULT_USER.
 
     Returns:
-        A dict with user_name, holdings, summary, and sector_breakdown —
-        matching src/analytics/portfolio_metrics.py's return shapes.
-        holdings/summary/sector_breakdown are all empty/zeroed (not
-        errors) if the user has no watchlist entries yet.
+        Portfolio user, holdings, summary, and sector breakdown.
     """
     resolved_user = (user_name or "").strip() or DEFAULT_USER
 
@@ -59,7 +47,7 @@ def build_portfolio_page_data(user_name: str | None) -> dict[str, Any]:
 
 
 def _parse_decimal(raw: str, field_name: str) -> Decimal:
-    """Parse a form field into a Decimal, raising PortfolioInputError with a clear message on failure."""
+    """Parse a form value as Decimal."""
     try:
         return Decimal(raw.strip())
     except (InvalidOperation, AttributeError) as exc:
@@ -74,27 +62,10 @@ def add_or_update_holding(
     purchased_at: str | None,
 ) -> None:
     """
-    Insert a new position or update an existing one (matched on
-    user_name + symbol), setting shares and avg_cost_basis. Used by the
-    Portfolio page's "Add / Update Holding" form.
-
-    Args:
-        user_name: The watchlist owner.
-        symbol: Stock ticker symbol (case-insensitive; stored uppercase).
-        shares: Number of shares held, as a form string. Must be > 0 —
-            use remove_holding() to close a position instead of setting
-            shares to 0 here, since shares = 0 requires avg_cost_basis to
-            be NULL (see the chk_watchlist_shares_cost_consistency
-            constraint in database/tables.sql).
-        avg_cost_basis: Average price paid per share, as a form string.
-            Must be > 0.
-        purchased_at: Optional ISO date string (YYYY-MM-DD). Blank/None
-            is stored as NULL.
+    Add or update a portfolio holding.
 
     Raises:
-        PortfolioInputError: If symbol is blank, shares/avg_cost_basis
-            aren't valid positive numbers, or purchased_at isn't a valid
-            date.
+        PortfolioInputError: If any input is invalid.
     """
     clean_symbol = (symbol or "").strip().upper()
     if not clean_symbol:
@@ -134,13 +105,7 @@ def add_or_update_holding(
 
 def add_watch_only(user_name: str, symbol: str) -> None:
     """
-    Add a symbol to the watchlist with no position (shares = 0), i.e. the
-    original Phase 0-11 "just watch this symbol" behavior, still
-    available as a lighter-weight alternative to add_or_update_holding().
-
-    Args:
-        user_name: The watchlist owner.
-        symbol: Stock ticker symbol (case-insensitive; stored uppercase).
+    Add a symbol to the watchlist without a position.
 
     Raises:
         PortfolioInputError: If symbol is blank.
@@ -164,12 +129,7 @@ def add_watch_only(user_name: str, symbol: str) -> None:
 
 def remove_holding(user_name: str, symbol: str) -> None:
     """
-    Remove a symbol from a user's watchlist/portfolio entirely (whether
-    it was a real position or a watch-only entry).
-
-    Args:
-        user_name: The watchlist owner.
-        symbol: Stock ticker symbol (case-insensitive) to remove.
+    Remove a symbol from a user's watchlist or portfolio.
     """
     clean_symbol = (symbol or "").strip().upper()
 

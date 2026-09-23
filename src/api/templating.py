@@ -1,8 +1,7 @@
 """
 templating.py
 
-Shared Jinja2Templates instance used by every route module in src/api/routes/.
-
+Shared Jinja2 template configuration and formatting filters.
 """
 
 from pathlib import Path
@@ -15,14 +14,14 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 def _format_currency(value: float | None, decimals: int = 2) -> str:
-    """Jinja2 filter: format a number as a US-dollar amount, e.g. 1234.5 -> \"$1,234.50\"."""
+    """Format a number as a US-dollar amount."""
     if value is None:
         return "—"
     return f"${value:,.{decimals}f}"
 
 
 def _format_large_number(value: float | None) -> str:
-    """Jinja2 filter: abbreviate large numbers, e.g. 3_000_000_000_000 -> \"$3.00T\"."""
+    """Format large monetary values using K, M, B, or T notation."""
     if value is None:
         return "—"
     abs_value = abs(value)
@@ -37,7 +36,7 @@ def _format_large_number(value: float | None) -> str:
 
 
 def _format_percent(value: float | None, decimals: int = 2) -> str:
-    """Jinja2 filter: format a number as a signed percentage, e.g. -1.2 -> \"-1.20%\"."""
+    """Format a number as a signed percentage."""
     if value is None:
         return "—"
     sign = "+" if value > 0 else ""
@@ -45,7 +44,7 @@ def _format_percent(value: float | None, decimals: int = 2) -> str:
 
 
 def _format_volume(value: int | None) -> str:
-    """Jinja2 filter: abbreviate share volume, e.g. 1_234_567 -> \"1.23M\"."""
+    """Format share volume using K, M, or B notation."""
     if value is None:
         return "—"
     if value >= 1_000_000_000:

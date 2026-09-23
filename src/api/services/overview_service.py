@@ -1,11 +1,7 @@
 """
 overview_service.py
 
-Business logic for the Market Overview page (src/api/routes/overview.py).
-
-This module composes data from src/analytics/kpi_calculator.py and a
-lightweight direct query for recent news into the exact shape the
-Market Overview template needs.
+Builds data for the Market Overview page.
 """
 
 from typing import Any
@@ -29,27 +25,9 @@ def _dominant_sentiment_label(
     neutral_count: int | None,
 ) -> str | None:
     """
-    Reduce a company's sentiment_scores counts (as returned by the
-    company_sentiment_summary view) to a single label for the Market
-    Overview table's compact Sentiment column.
+    Return the dominant sentiment label from article counts.
 
-    Args:
-        positive_count: Count of this company's articles scored
-            "positive". None if the company has no scored articles
-            (company_sentiment_summary has no row for it at all).
-        negative_count: Count scored "negative". None under the same
-            condition as positive_count.
-        neutral_count: Count scored "neutral". None under the same
-            condition as positive_count.
-
-    Returns:
-        "positive", "negative", or "neutral" — whichever count is
-        highest. Ties are broken in that same order (positive beats
-        negative beats neutral), matching the intuition that a tied
-        positive/negative split is more notable than defaulting to
-        neutral. Returns None if the company has no scored articles at
-        all (all three counts None, from the LEFT JOIN finding no
-        matching view row).
+    Returns None when no scored articles exist.
     """
     if positive_count is None and negative_count is None and neutral_count is None:
         return None
@@ -63,42 +41,13 @@ def _dominant_sentiment_label(
 
 
 def get_recent_news(limit: int = RECENT_NEWS_LIMIT) -> list[dict[str, Any]]:
-    """
-    Fetch the most recently published news articles across all tracked
-    companies, for the Market Overview page's "Latest Market News"
-    section.
-
-    Args:
-        limit: Maximum number of articles to return.
-
-    Returns:
-        A list of dicts with symbol, company_name, title, source,
-        published_date, and url, ordered most-recent-first. Returns an
-        empty list if no news has been loaded yet.
-    """
+    """Return the latest market news articles."""
     return get_news(symbol=None, limit=limit)
 
 
 def get_news(symbol: str | None = None, limit: int = RECENT_NEWS_LIMIT) -> list[dict[str, Any]]:
     """
-    Fetch recent news articles, optionally scoped to a single company —
-    used by both get_recent_news() (Market Overview page, Phase 5) and
-    the Phase 13 `GET /api/news` JSON endpoint.
-
-    Args:
-        symbol: If provided, only articles for this company are
-            returned. None returns articles across all tracked
-            companies.
-        limit: Maximum number of articles to return.
-
-    Returns:
-        A list of dicts with symbol, company_name, title, source,
-        published_date, and url, ordered most-recent-first. Empty list
-        if no matching news has been loaded yet (including if `symbol`
-        doesn't exist in the companies table — this function doesn't
-        itself distinguish "unknown symbol" from "known symbol, no
-        news"; callers that need a 404 for an unknown symbol should
-        check that separately).
+    Return recent news, optionally filtered by symbol.
     """
     query = """
         SELECT c.symbol, c.company_name, na.title, na.source, na.published_date, na.url
@@ -132,25 +81,7 @@ def get_filtered_companies(
     search: str | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Fetch all tracked companies with their latest price, optionally
-    filtered by sector and/or a case-insensitive search term matched
-    against symbol or company name.
-
-    Args:
-        sector: If provided, only companies in this exact sector are returned.
-        search: If provided, only companies whose symbol or company_name
-            contains this term (case-insensitive) are returned.
-
-    Returns:
-        A list of dicts with symbol, company_name, sector, industry,
-        market_cap, pe_ratio, current_price, daily_change_pct (None if
-        fewer than two days of price history exist for that company), and
-        sentiment_label (Phase 7) — one of "positive", "negative",
-        "neutral" (whichever has the highest scored-article count for
-        that company; ties favor positive, then negative, then neutral),
-        or None if the company has no scored news articles yet.
-        Ordered by symbol. Returns an empty list if no companies match
-        (or none are loaded yet).
+    Return tracked companies with optional sector and search filters.
     """
     query = """
         WITH ranked_prices AS (
@@ -229,14 +160,7 @@ def get_filtered_companies(
 
 
 def get_all_sectors() -> list[str]:
-    """
-    Fetch the distinct list of sectors currently represented among tracked
-    companies, for the Market Overview page's sector filter dropdown.
-
-    Returns:
-        A sorted list of distinct, non-null sector names. Empty if no
-        companies are loaded yet.
-    """
+    """Return all distinct tracked company sectors."""
     query = "SELECT DISTINCT sector FROM companies WHERE sector IS NOT NULL ORDER BY sector;"
 
     with get_connection() as conn:
@@ -249,15 +173,7 @@ def get_all_sectors() -> list[str]:
 
 def build_overview_page_data(sector: str | None = None, search: str | None = None) -> dict[str, Any]:
     """
-    Assemble everything the Market Overview template needs in one call.
-
-    Args:
-        sector: Optional sector filter, forwarded to get_filtered_companies().
-        search: Optional search term, forwarded to get_filtered_companies().
-
-    Returns:
-        A dict with keys: market_kpis, top_movers, sector_performance,
-        recent_news, companies, all_sectors, active_sector, active_search.
+    Build all data required by the Market Overview page.
     """
     return {
         "market_kpis": get_market_overview_kpis(),

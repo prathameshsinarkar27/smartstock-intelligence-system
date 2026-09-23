@@ -1,18 +1,10 @@
 """
 schemas.py
 
-Pydantic models for Phase 13's JSON API (src/api/routes/api.py).
+Pydantic models for the JSON API.
 
-These are response/request shapes only — they don't duplicate business
-logic. Every field here mirrors a key already returned by an existing
-service function (src/api/services/*.py, src/analytics/*.py) or RAGAnswer
-(src/rag/rag_pipeline.py); this module exists so FastAPI can validate
-request bodies and generate accurate OpenAPI docs (visible at /docs) for
-API consumers who aren't using the HTML dashboard.
-
-The HTML dashboard's routes (overview.py, stock_detail.py, portfolio.py)
-intentionally do NOT use these models — they return TemplateResponse, not
-JSON, so typed schemas would add no value there. Only api.py uses them.
+Defines request and response schemas used by FastAPI for
+validation and OpenAPI documentation.
 """
 
 from datetime import date, datetime
@@ -26,7 +18,7 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------
 
 class StockSummary(BaseModel):
-    """One row of GET /api/stocks — mirrors overview_service.get_filtered_companies()."""
+    """One stock summary returned by the stocks endpoint."""
 
     symbol: str
     company_name: str | None = None
@@ -40,7 +32,7 @@ class StockSummary(BaseModel):
 
 
 class TechnicalIndicators(BaseModel):
-    """Latest technical indicator values — mirrors stock_detail_service.get_latest_indicator_summary()."""
+    """Latest technical indicator values for a stock."""
 
     sma_20: float | None = None
     sma_50: float | None = None
@@ -58,7 +50,7 @@ class TechnicalIndicators(BaseModel):
 
 
 class StockDetail(BaseModel):
-    """GET /api/stocks/{symbol} — mirrors kpi_calculator.get_company_kpis() + technical indicators."""
+    """Detailed stock information with technical indicators."""
 
     symbol: str
     company_name: str | None = None
@@ -80,7 +72,7 @@ class StockDetail(BaseModel):
 
 
 class PricePoint(BaseModel):
-    """One row of GET /api/stocks/{symbol}/prices — mirrors stock_detail_service.get_price_history()."""
+    """One OHLCV price record."""
 
     date: date
     open: float
@@ -95,7 +87,7 @@ class PricePoint(BaseModel):
 # ---------------------------------------------------------------------
 
 class NewsItem(BaseModel):
-    """One row of GET /api/news — mirrors overview_service.get_news()."""
+    """One news article returned by the news endpoint."""
 
     symbol: str
     company_name: str | None = None
@@ -110,7 +102,7 @@ class NewsItem(BaseModel):
 # ---------------------------------------------------------------------
 
 class CompanyProfile(BaseModel):
-    """GET /api/company/{symbol} — company fundamentals only, a subset of StockDetail."""
+    """Company fundamentals returned by the company endpoint."""
 
     symbol: str
     company_name: str | None = None
@@ -125,7 +117,7 @@ class CompanyProfile(BaseModel):
 # ---------------------------------------------------------------------
 
 class SentimentArticle(BaseModel):
-    """One scored article — mirrors stock_detail_service.get_company_sentiment()'s "articles" list."""
+    """One scored news article."""
 
     title: str
     source: str | None = None
@@ -136,7 +128,7 @@ class SentimentArticle(BaseModel):
 
 
 class SentimentResponse(BaseModel):
-    """GET /api/sentiment/{symbol} — mirrors stock_detail_service.get_company_sentiment()."""
+    """Sentiment metrics and scored articles for a stock."""
 
     symbol: str
     positive_count: int
@@ -152,7 +144,7 @@ class SentimentResponse(BaseModel):
 # ---------------------------------------------------------------------
 
 class MLPrediction(BaseModel):
-    """Mirrors stock_detail_service.get_company_ml_prediction()."""
+    """Latest ML trend and risk prediction."""
 
     prediction_date: date
     trend_prediction: str
@@ -160,7 +152,7 @@ class MLPrediction(BaseModel):
 
 
 class SHAPContribution(BaseModel):
-    """One feature's contribution — matches src.explainability.shap_analysis's per-feature output shape."""
+    """One feature's contribution to a model prediction."""
 
     feature: str
     contribution: float
@@ -168,7 +160,7 @@ class SHAPContribution(BaseModel):
 
 
 class PredictionResponse(BaseModel):
-    """GET /api/predict/{symbol} — mirrors stock_detail_service.get_company_ml_prediction()/get_company_ml_explanation()."""
+    """ML prediction and optional SHAP explanation."""
 
     symbol: str
     prediction: MLPrediction | None = None
@@ -180,7 +172,7 @@ class PredictionResponse(BaseModel):
 # ---------------------------------------------------------------------
 
 class AssistantInsight(BaseModel):
-    """GET /api/assistant/{symbol} — mirrors src.genai.stock_assistant.get_company_ai_insight()."""
+    """AI-generated research insight for a stock."""
 
     symbol: str
     outlook: str
@@ -191,21 +183,21 @@ class AssistantInsight(BaseModel):
 
 
 class AssistantAskRequest(BaseModel):
-    """Request body for POST /api/assistant/{symbol}/ask."""
+    """Request body for report-based assistant queries."""
 
     question: str = Field(..., min_length=1, max_length=2000, description="A question about the company's ingested annual report(s).")
     top_k: int = Field(default=5, ge=1, le=20, description="How many report excerpts to retrieve as context.")
 
 
 class AssistantAskSource(BaseModel):
-    """One cited source excerpt — mirrors a RAGAnswer.sources entry."""
+    """One cited source from the RAG response."""
 
     source_file: str
     page: int | None = None
 
 
 class AssistantAskResponse(BaseModel):
-    """Response body for POST /api/assistant/{symbol}/ask — mirrors src.rag.rag_pipeline.RAGAnswer."""
+    """Response from the report-based assistant."""
 
     symbol: str
     question: str
@@ -218,7 +210,7 @@ class AssistantAskResponse(BaseModel):
 # ---------------------------------------------------------------------
 
 class PortfolioHolding(BaseModel):
-    """One row of GET /api/portfolio — mirrors portfolio_metrics.get_portfolio_holdings()."""
+    """One portfolio holding or watchlist entry."""
 
     watchlist_id: int
     symbol: str
@@ -239,7 +231,7 @@ class PortfolioHolding(BaseModel):
 
 
 class PortfolioSummary(BaseModel):
-    """Mirrors portfolio_metrics.get_portfolio_summary()."""
+    """Aggregated portfolio metrics."""
 
     position_count: int
     watch_only_count: int
@@ -252,7 +244,7 @@ class PortfolioSummary(BaseModel):
 
 
 class SectorConcentration(BaseModel):
-    """One row of portfolio_metrics.get_sector_concentration()."""
+    """Portfolio allocation for one sector."""
 
     sector: str
     market_value: float
@@ -260,7 +252,7 @@ class SectorConcentration(BaseModel):
 
 
 class PortfolioResponse(BaseModel):
-    """GET /api/portfolio."""
+    """Portfolio holdings, summary, and sector breakdown."""
 
     user_name: str
     holdings: list[PortfolioHolding] = Field(default_factory=list)
@@ -269,7 +261,7 @@ class PortfolioResponse(BaseModel):
 
 
 class PortfolioHoldingRequest(BaseModel):
-    """Request body for POST /api/portfolio/holdings."""
+    """Request body for adding or updating a portfolio holding."""
 
     user_name: str = Field(..., min_length=1, max_length=100)
     symbol: str = Field(..., min_length=1, max_length=20)
@@ -279,14 +271,14 @@ class PortfolioHoldingRequest(BaseModel):
 
 
 class WatchlistRequest(BaseModel):
-    """Request body for POST /api/portfolio/watchlist."""
+    """Request body for adding a watchlist symbol."""
 
     user_name: str = Field(..., min_length=1, max_length=100)
     symbol: str = Field(..., min_length=1, max_length=20)
 
 
 class SimpleStatus(BaseModel):
-    """Generic acknowledgement response for write endpoints that don't return a resource body."""
+    """Generic acknowledgement response."""
 
     status: str
     detail: str | None = None
