@@ -1,20 +1,18 @@
 -- tables.sql
---
 -- SmartStock Intelligence Platform — Table Definitions
 --
 -- Defines the six core tables:
---   companies, historical_prices, news_articles, sentiment_scores,
---   predictions, watchlist
+-- companies, historical_prices, news_articles,
+-- sentiment_scores, predictions, watchlist
 --
--- Run this AFTER schema.sql, connected to the 'smartstock' database:
---   psql -U postgres -d smartstock -f database/tables.sql
+-- Run after schema.sql while connected to the smartstock database.
+-- Example: psql -U postgres -d smartstock -f database/tables.sql
 
 
 -- ----------------------------------------------------------------------
 -- Table: companies
 -- ----------------------------------------------------------------------
--- One row per tracked stock symbol. Populated by src/etl/load_to_db.py
--- from src/ingestion/fetch_company_data.py output (Phase 3).
+-- Stores tracked stock symbols and company fundamentals.
 CREATE TABLE IF NOT EXISTS companies (
     company_id      SERIAL PRIMARY KEY,
     symbol          VARCHAR(20)     NOT NULL UNIQUE,
@@ -33,8 +31,7 @@ COMMENT ON TABLE companies IS 'One row per tracked stock symbol; company fundame
 -- ----------------------------------------------------------------------
 -- Table: historical_prices
 -- ----------------------------------------------------------------------
--- One row per (company, date) daily OHLCV candle. Populated by
--- src/etl/load_to_db.py from src/ingestion/fetch_stock_data.py output.
+-- Stores daily OHLCV data for each company.
 CREATE TABLE IF NOT EXISTS historical_prices (
     price_id        BIGSERIAL PRIMARY KEY,
     company_id      INTEGER         NOT NULL REFERENCES companies(company_id) ON DELETE CASCADE,
@@ -46,11 +43,10 @@ CREATE TABLE IF NOT EXISTS historical_prices (
     volume          BIGINT          NOT NULL,
     created_at      TIMESTAMPTZ     NOT NULL DEFAULT now(),
 
-    -- A company should only have one candle per calendar date.
+    -- One price record per company per date.
     CONSTRAINT uq_historical_prices_company_date UNIQUE (company_id, date),
 
-    -- Sanity constraints: high must be the max and low must be the min
-    -- of the day's price action.
+    -- Validate daily price ranges.
     CONSTRAINT chk_price_high_low CHECK (high >= low),
     CONSTRAINT chk_price_nonnegative CHECK (open >= 0 AND high >= 0 AND low >= 0 AND close >= 0),
     CONSTRAINT chk_volume_nonnegative CHECK (volume >= 0)
@@ -64,8 +60,7 @@ CREATE INDEX IF NOT EXISTS idx_historical_prices_company_date
 -- ----------------------------------------------------------------------
 -- Table: news_articles
 -- ----------------------------------------------------------------------
--- One row per news article fetched per company. Populated by
--- src/etl/load_to_db.py from src/ingestion/fetch_news.py output.
+-- Stores news articles associated with each company.
 CREATE TABLE IF NOT EXISTS news_articles (
     news_id         BIGSERIAL PRIMARY KEY,
     company_id      INTEGER         NOT NULL REFERENCES companies(company_id) ON DELETE CASCADE,
@@ -76,7 +71,7 @@ CREATE TABLE IF NOT EXISTS news_articles (
     url             TEXT,
     created_at      TIMESTAMPTZ     NOT NULL DEFAULT now(),
 
-    -- Prevent loading the exact same article twice for the same company.
+    -- Prevent duplicate articles for the same company.
     CONSTRAINT uq_news_articles_company_url UNIQUE (company_id, url)
 );
 
@@ -88,8 +83,7 @@ CREATE INDEX IF NOT EXISTS idx_news_articles_company_date
 -- ----------------------------------------------------------------------
 -- Table: sentiment_scores
 -- ----------------------------------------------------------------------
--- One row per news article's sentiment result. Populated by
--- src/sentiment/sentiment_pipeline.py (Phase 7).
+-- Stores sentiment results for news articles.
 CREATE TABLE IF NOT EXISTS sentiment_scores (
     score_id            BIGSERIAL PRIMARY KEY,
     news_id             BIGINT          NOT NULL REFERENCES news_articles(news_id) ON DELETE CASCADE,
@@ -97,7 +91,7 @@ CREATE TABLE IF NOT EXISTS sentiment_scores (
     confidence_score    NUMERIC(5, 4)   NOT NULL,
     created_at          TIMESTAMPTZ     NOT NULL DEFAULT now(),
 
-    -- One sentiment result per article (re-scoring should UPDATE, not insert).
+    -- One sentiment result per article.
     CONSTRAINT uq_sentiment_scores_news_id UNIQUE (news_id),
 
     CONSTRAINT chk_sentiment_value
@@ -114,8 +108,7 @@ CREATE INDEX IF NOT EXISTS idx_sentiment_scores_news_id
 -- ----------------------------------------------------------------------
 -- Table: predictions
 -- ----------------------------------------------------------------------
--- One row per (company, prediction_date) ML prediction. Populated by
--- src/ml/predict.py (Phase 8).
+-- Stores ML predictions for each company and date.
 CREATE TABLE IF NOT EXISTS predictions (
     prediction_id       BIGSERIAL PRIMARY KEY,
     company_id           INTEGER         NOT NULL REFERENCES companies(company_id) ON DELETE CASCADE,
@@ -124,7 +117,7 @@ CREATE TABLE IF NOT EXISTS predictions (
     risk_score            NUMERIC(5, 4)   NOT NULL,
     created_at            TIMESTAMPTZ     NOT NULL DEFAULT now(),
 
-    -- One prediction per company per date (re-running inference updates it).
+    -- One prediction per company per date.
     CONSTRAINT uq_predictions_company_date UNIQUE (company_id, prediction_date),
 
     CONSTRAINT chk_trend_prediction_value
@@ -141,17 +134,9 @@ CREATE INDEX IF NOT EXISTS idx_predictions_company_date
 -- ----------------------------------------------------------------------
 -- Table: watchlist
 -- ----------------------------------------------------------------------
--- User-curated list of symbols, used by the Portfolio Analyzer (Phase 12).
--- user_name is a plain string rather than a foreign key to a users table,
--- since the blueprint does not define user authentication/accounts.
---
--- Phase 12 note: shares/avg_cost_basis/purchased_at were added so this
--- table can represent a TRUE portfolio (real P&L), not just a symbol
--- watchlist. A row with shares = 0 (the default) is still a plain
--- "watching only" entry exactly like Phases 0-11 — it only becomes a
--- real position once shares > 0 and avg_cost_basis is set. See
--- database/migrations/phase12_portfolio_schema.sql for the in-place
--- upgrade path on an existing database.
+-- Stores user watchlist entries and portfolio positions.
+-- user_name is used instead of a users table because authentication
+-- is not defined in the database schema.
 CREATE TABLE IF NOT EXISTS watchlist (
     watchlist_id    BIGSERIAL PRIMARY KEY,
     user_name       VARCHAR(100)    NOT NULL,
@@ -161,11 +146,10 @@ CREATE TABLE IF NOT EXISTS watchlist (
     purchased_at    DATE,
     created_at      TIMESTAMPTZ     NOT NULL DEFAULT now(),
 
-    -- A user should not be able to add the same symbol twice.
+    -- Prevent duplicate symbols for the same user.
     CONSTRAINT uq_watchlist_user_symbol UNIQUE (user_name, symbol),
 
-    -- Either "watch only" (no position) or a fully-specified position —
-    -- never a half-state where P&L would be undefined.
+    -- Require complete position details when shares are held.
     CONSTRAINT chk_watchlist_shares_cost_consistency
         CHECK (
             (shares = 0 AND avg_cost_basis IS NULL)

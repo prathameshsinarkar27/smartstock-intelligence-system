@@ -1,17 +1,11 @@
 -- schema.sql
---
--- =====================================================
--- SmartStock Intelligence Platform
--- Database Initialization
--- =====================================================
+-- SmartStock database initialization
 
--- Create the SmartStock database manually if it does not already exist.
--- Example:
---   CREATE DATABASE smartstock;
+-- Create the database manually if needed.
+-- Example: CREATE DATABASE smartstock;
 
--- After creating the database, connect to it:
---   \c smartstock
+-- Connect to the database.
+-- Example: \c smartstock
 
--- Enable required PostgreSQL extensions.
--- pgcrypto will be used in later phases for UUID generation.
+-- Enable PostgreSQL extension for UUID generation.
 CREATE EXTENSION IF NOT EXISTS pgcrypto;

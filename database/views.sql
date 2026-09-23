@@ -1,21 +1,14 @@
 -- views.sql
---
 -- SmartStock Intelligence Platform — Reporting Views
+-- Reporting views for analytics, dashboards, APIs, and portfolio analysis.
 
--- Reporting views used by:
--- - Analytics
--- - Streamlit Dashboard
--- - FastAPI
--- - Portfolio Analyzer
-
--- Run this AFTER tables.sql:
---   psql -U postgres -d smartstock -f database/views.sql
+-- Run after tables.sql.
+-- Example: psql -U postgres -d smartstock -f database/views.sql
 
 -- ----------------------------------------------------------------------
 -- View: latest_prices
 -- ----------------------------------------------------------------------
--- The most recent price candle per company, joined with company info.
--- Used by KPI cards (Phase 5) to show current price at a glance.
+-- Returns the latest price candle for each company.
 CREATE OR REPLACE VIEW latest_prices AS
 SELECT
     c.company_id,
@@ -40,9 +33,7 @@ COMMENT ON VIEW latest_prices IS 'Most recent OHLCV candle per company.';
 -- ----------------------------------------------------------------------
 -- View: company_sentiment_summary
 -- ----------------------------------------------------------------------
--- Aggregated sentiment counts and average confidence per company, across
--- all scored news articles. Used by the Sentiment Analysis dashboard page
--- (Phase 7).
+-- Aggregates sentiment counts and average confidence per company.
 CREATE OR REPLACE VIEW company_sentiment_summary AS
 SELECT
     c.company_id,
@@ -63,9 +54,7 @@ COMMENT ON VIEW company_sentiment_summary IS 'Aggregated sentiment distribution 
 -- ----------------------------------------------------------------------
 -- View: latest_predictions
 -- ----------------------------------------------------------------------
--- The most recent ML prediction per company, joined with company info.
--- Used by the ML Predictions dashboard page (Phase 8) and the GenAI
--- assistant (Phase 10) when explaining current risk/trend outlook.
+-- Returns the latest ML prediction for each company.
 CREATE OR REPLACE VIEW latest_predictions AS
 SELECT
     c.company_id,
@@ -87,12 +76,7 @@ COMMENT ON VIEW latest_predictions IS 'Most recent trend/risk prediction per com
 -- ----------------------------------------------------------------------
 -- View: watchlist_overview
 -- ----------------------------------------------------------------------
--- Joins each user's watchlist entries with current company info and
--- latest price, for the Portfolio Analyzer (Phase 12).
--- Phase 12 adds shares/avg_cost_basis/purchased_at plus computed
--- market_value / cost_value / unrealized_pl / unrealized_pl_pct, so the
--- Portfolio Analyzer page and src/analytics/portfolio_metrics.py can read
--- P&L straight from this view instead of recomputing it in Python.
+-- Combines watchlist entries with company data, latest prices, and P&L.
 CREATE OR REPLACE VIEW watchlist_overview AS
 SELECT
     w.watchlist_id,
