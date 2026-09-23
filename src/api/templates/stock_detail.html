@@ -360,6 +360,52 @@
             </div>
         </div>
     </div>
+
+    <div class="row g-3 mt-1">
+        <div class="col-12">
+            <div class="panel">
+                <div class="d-flex justify-content-between align-items-baseline mb-2">
+                    <span class="section-label mb-0">Ask About This Company's Report</span>
+                </div>
+                <div class="empty-state-detail mb-3">
+                    Ask a question grounded in {{ kpis.symbol }}'s ingested annual report
+                    — answers come only from the report's actual text, not
+                    general knowledge.
+                </div>
+                <form method="post" action="/stocks/{{ kpis.symbol }}/ask" class="d-flex gap-2 mb-3">
+                    <input
+                        type="text"
+                        name="question"
+                        class="form-control"
+                        placeholder="e.g. What was total revenue last fiscal year?"
+                        value="{{ rag_result.question if rag_result else '' }}"
+                        required
+                    >
+                    <button type="submit" class="btn-terminal">Ask</button>
+                </form>
+
+                {% if rag_result %}
+                    {% if rag_result.error %}
+                    <div class="empty-state-detail">
+                        {{ rag_result.error }}
+                    </div>
+                    {% else %}
+                    <p style="margin-bottom: 1rem;">{{ rag_result.answer }}</p>
+                    {% if rag_result.sources %}
+                    <span class="kpi-label">Sources</span>
+                    <ul class="mb-0">
+                        {% for source in rag_result.sources %}
+                        <li>
+                            {{ source.source_file }}{% if source.page %} (page {{ source.page }}){% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 

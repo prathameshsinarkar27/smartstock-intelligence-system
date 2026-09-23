@@ -8,11 +8,15 @@ and AI-generated insights are present.
 
 """
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from src.analytics.technical_indicators import compute_all_indicators
-from src.api.services.stock_detail_service import build_company_detail_page_data, get_price_history
+from src.api.services.stock_detail_service import (
+    ask_about_report,
+    build_company_detail_page_data,
+    get_price_history,
+)
 from src.api.templating import templates
 from src.utils.logger import get_logger
 
@@ -51,7 +55,55 @@ async def company_detail(request: Request, symbol: str):
     return templates.TemplateResponse(
         request=request,
         name="stock_detail.html",
-        context=page_data,
+        context={**page_data, "rag_result": None},
+    )
+
+
+@router.post("/stocks/{symbol}/ask", response_class=HTMLResponse)
+async def ask_about_report_route(request: Request, symbol: str, question: str = Form(...)):
+    """
+    Handle the "Ask About This Company's Report" panel's form submission
+    (Phase 11's RAG system, first made reachable from the dashboard
+    itself here — previously only the RAG CLI or the JSON API's
+    POST /api/assistant/{symbol}/ask, Phase 13).
+
+    Re-renders the full Company Detail page (same as the GET route)
+    rather than redirecting, so the potentially-long answer text and its
+    source citations don't need to round-trip through a URL query
+    string — the trade-off is that submitting the form is a normal
+    (non-AJAX) POST, so the page does a full reload with the answer
+    included; acceptable for how infrequently a single question is asked
+    compared to how often the page is just viewed.
+
+    Args:
+        request: Injected by FastAPI; required by Jinja2Templates.
+        symbol: Stock ticker symbol from the URL path, e.g. "AAPL".
+        question: The submitted question, from the panel's text field.
+
+    Returns:
+        The rendered stock_detail.html template, identical to a normal
+        GET, with the additional rag_result context key populated (see
+        ask_about_report()'s docstring for its shape) so the panel can
+        show the answer, its sources, or an explanatory error message.
+        A 404 (via not_found.html) if the symbol itself doesn't exist —
+        same behavior as the GET route.
+    """
+    page_data = build_company_detail_page_data(symbol)
+
+    if page_data is None:
+        return templates.TemplateResponse(
+            request=request,
+            name="not_found.html",
+            context={"symbol": symbol.upper()},
+            status_code=404,
+        )
+
+    rag_result = ask_about_report(symbol, question)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="stock_detail.html",
+        context={**page_data, "rag_result": rag_result},
     )
 
 

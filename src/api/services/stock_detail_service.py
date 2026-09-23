@@ -20,6 +20,7 @@ from src.explainability.shap_analysis import explain_company_prediction
 from src.genai.llm_utils import LLMConfigError, LLMRequestError
 from src.genai.stock_assistant import DISCLAIMER_TEXT, get_company_ai_insight
 from src.ml.train_model import ModelNotTrainedError
+from src.rag.rag_pipeline import answer_question
 from src.utils.database import get_connection
 from src.utils.logger import get_logger
 
@@ -355,3 +356,59 @@ def build_company_detail_page_data(symbol: str) -> dict[str, Any] | None:
         "ai_analysis": get_company_ai_analysis(symbol),
         "ai_disclaimer": DISCLAIMER_TEXT,
     }
+
+
+def ask_about_report(symbol: str, question: str, top_k: int = 5) -> dict[str, Any]:
+    """
+    Answer a question about a company's ingested annual report(s),
+    grounded in that company's PDF text via RAG (src.rag.rag_pipeline,
+    Phase 11). Powers the "Ask About This Company's Report" panel on the
+    Company Detail page — the first place this feature is reachable from
+    the dashboard itself, rather than only the RAG CLI or the JSON API's
+    POST /api/assistant/{symbol}/ask (Phase 13).
+
+    This function never raises: every failure mode (no report ingested,
+    Gemini not configured, the Gemini call itself failing) is caught and
+    turned into a dict the template can render an appropriate message
+    from, the same graceful-degradation pattern get_company_ai_analysis()
+    already uses for Phase 10's AI Insights panel just above this one.
+
+    Args:
+        symbol: Stock ticker symbol, e.g. "AAPL".
+        question: The user's question, from the panel's form field.
+        top_k: How many report excerpts to retrieve as context.
+
+    Returns:
+        A dict with:
+            - question: the question asked (echoed back for the template)
+            - answer: the grounded answer text, or None if unavailable
+            - sources: list of {"source_file", "page"} dicts, or [] if unavailable
+            - error: a short, user-facing message explaining why answer
+              is None, or None if answer succeeded
+    """
+    if not question or not question.strip():
+        return {"question": question, "answer": None, "sources": [], "error": "Enter a question first."}
+
+    try:
+        result = answer_question(symbol, question.strip(), top_k=top_k)
+    except LLMConfigError:
+        logger.warning("RAG question for %s skipped: Gemini not configured.", symbol)
+        return {
+            "question": question, "answer": None, "sources": [],
+            "error": "AI assistant is not configured (GEMINI_API_KEY isn't set).",
+        }
+    except LLMRequestError as exc:
+        logger.warning("RAG question for %s failed: %s", symbol, exc)
+        return {
+            "question": question, "answer": None, "sources": [],
+            "error": "The AI request failed. Please try again.",
+        }
+
+    if result is None:
+        return {
+            "question": question, "answer": None, "sources": [],
+            "error": f"No ingested report found for {symbol.upper()}. Ingest one first: "
+            f"python -m src.rag.rag_pipeline ingest --symbol {symbol.upper()} --pdf <path>",
+        }
+
+    return {"question": result.question, "answer": result.answer, "sources": result.sources, "error": None}
