@@ -1,14 +1,10 @@
 """
 evaluate_model.py
 
-Loads the models and metadata saved by train_model.py, reconstructs the
-exact same chronological held-out test set (using the test_cutoff_date
-recorded in model_metadata.json), and reports classification metrics for
-the RandomForest model, the XGBoost model, and the ensemble average of
-their predicted probabilities — the same ensemble predict.py uses in
-production — so the ensembling choice is itself measured, not assumed.
+Evaluates the trained RandomForest, XGBoost, and ensemble models
+on the chronological held-out test set.
 
-Usage (from project root, with venv activated):
+Usage:
     python -m src.ml.evaluate_model
 """
 
@@ -46,20 +42,16 @@ CLASS_LABELS_IN_ORDER = [INT_TO_LABEL[i] for i in range(len(INT_TO_LABEL))]
 
 def rebuild_test_set(metadata: dict) -> pd.DataFrame:
     """
-    Rebuild the exact same held-out test set train_model.py evaluated
-    against, using the test_cutoff_date recorded in its metadata.
+    Rebuild the held-out test set using the recorded cutoff date.
 
     Args:
-        metadata: Output of load_trained_models()'s metadata element.
+        metadata: Training metadata containing test_cutoff_date.
 
     Returns:
-        A DataFrame of usable rows (complete features, non-null label)
-        with date strictly after metadata["test_cutoff_date"].
+        Usable test rows after the cutoff date.
 
     Raises:
-        TrainingDataError: If no rows fall after the cutoff date — e.g.
-            no data has been loaded since training, so there's nothing
-            new to evaluate against.
+        TrainingDataError: If no rows exist after the cutoff date.
     """
     dataset = build_feature_dataset(metadata.get("train_companies"))
     train_rows = build_training_rows(dataset)
@@ -79,19 +71,15 @@ def rebuild_test_set(metadata: dict) -> pd.DataFrame:
 
 def evaluate_predictions(y_true, y_pred, model_name: str) -> dict:
     """
-    Compute and log accuracy, a full classification report, and a
-    confusion matrix for one model's predictions.
+    Compute classification metrics and log the results.
 
     Args:
         y_true: Integer-encoded true labels.
         y_pred: Integer-encoded predicted labels.
-        model_name: Human-readable name for logging (e.g. "RandomForest").
+        model_name: Model name used for logging.
 
     Returns:
-        A dict with accuracy, a per-class precision/recall/f1 report
-        (from sklearn's classification_report, output_dict=True), and
-        the confusion matrix as a nested list (rows = true class,
-        columns = predicted class, in CLASS_LABELS_IN_ORDER order).
+        Accuracy, classification report, and confusion matrix.
     """
     accuracy = accuracy_score(y_true, y_pred)
     report = classification_report(
@@ -122,16 +110,14 @@ def evaluate_predictions(y_true, y_pred, model_name: str) -> dict:
 
 def top_feature_importances(model, top_n: int = 5) -> list[tuple[str, float]]:
     """
-    Return a model's top-N most important features.
+    Return the top-N most important features.
 
     Args:
-        model: A fitted model exposing a feature_importances_ attribute
-            (true of both RandomForestClassifier and XGBClassifier).
-        top_n: How many features to return.
+        model: Fitted model with feature_importances_.
+        top_n: Number of features to return.
 
     Returns:
-        A list of (feature_name, importance) tuples, sorted descending
-        by importance.
+        Feature names and importances sorted descending.
     """
     importances = model.feature_importances_
     ranked = sorted(
@@ -144,15 +130,12 @@ def top_feature_importances(model, top_n: int = 5) -> list[tuple[str, float]]:
 
 def run_evaluation() -> dict:
     """
-    End-to-end evaluation run: load the trained models, rebuild the
-    held-out test set, and evaluate RandomForest, XGBoost, and their
-    ensemble average — saving a combined report to models/evaluation_report.json.
+    Evaluate RandomForest, XGBoost, and their probability ensemble.
+
+    Saves the combined evaluation report to evaluation_report.json.
 
     Returns:
-        The evaluation report dict that was written to disk, with keys
-        "random_forest", "xgboost", and "ensemble", each holding the
-        output of evaluate_predictions() plus (for the two individual
-        models) top feature importances.
+        The evaluation report written to disk.
     """
     rf_model, xgb_model, metadata = load_trained_models()
     test_df = rebuild_test_set(metadata)
@@ -190,7 +173,7 @@ def run_evaluation() -> dict:
 
 
 def main() -> None:
-    """Entry point for standalone script execution."""
+    """Run model evaluation."""
     try:
         run_evaluation()
     except (ModelNotTrainedError, TrainingDataError) as exc:

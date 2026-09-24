@@ -1,30 +1,10 @@
 """
 predict.py
 
-Generates a trend prediction and risk score for each company's most
-recent complete feature row, and upserts the results into the
-`predictions` table (database/tables.sql, Phase 2), for the dashboard's
-ML Risk Score KPI card and ML Predictions section (Phase 8).
+Generates ensembled trend predictions and risk scores for companies
+and upserts the results into the predictions table.
 
-Prediction approach: both saved models (RandomForest, XGBoost — see
-train_model.py) are loaded, each produces a predicted probability for
-"up"/"down"/"flat", and the two probability vectors are averaged (simple
-ensembling — see train_model.py's module docstring for why both models
-are kept rather than picking one "winner"). The final trend_prediction is
-whichever class has the highest averaged probability; risk_score is that
-same averaged probability for the "down" class specifically — i.e. "how
-likely does the ensemble think a downward move is over the next
-FORWARD_HORIZON_DAYS trading days," which is what the predictions table's
-CHECK constraint (0 <= risk_score <= 1) and the dashboard's "ML Risk
-Score" label both expect.
-
-prediction_date is set to the date of the feature row used (the most
-recent date with a full trading history for that company), not "today" —
-consistent with how src/analytics/kpi_calculator.py treats its own
-period_end_date: it's the last date the underlying data actually
-supports, not the wall-clock date the script happened to run on.
-
-Usage (from project root, with venv activated):
+Usage:
     python -m src.ml.predict
     python -m src.ml.predict --symbols AAPL MSFT
 """
@@ -59,22 +39,16 @@ _UPSERT_QUERY = """
 
 def generate_predictions(symbols: list[str] | None = None) -> list[tuple]:
     """
-    Build the latest feature row for each matching company and produce an
-    ensembled trend/risk prediction for it.
+    Generate ensembled trend and risk predictions for each company.
 
     Args:
-        symbols: If provided, restrict to these ticker symbols. If None,
-            every company with enough history is used.
+        symbols: Optional ticker symbols to restrict predictions to.
 
     Returns:
-        A list of (company_id, prediction_date, trend_prediction,
-        risk_score) tuples, one per company that has a usable latest
-        feature row. Companies without enough price history yet (see
-        feature_engineering.MIN_PRICE_HISTORY_ROWS) are silently absent
-        — there's nothing to predict from.
+        Tuples containing company ID, prediction date, trend, and risk score.
 
     Raises:
-        ModelNotTrainedError: If train_model.py hasn't been run yet.
+        ModelNotTrainedError: If trained models are unavailable.
     """
     rf_model, xgb_model, _metadata = load_trained_models()
 
@@ -107,12 +81,10 @@ def write_predictions(predictions: list[tuple]) -> int:
     Upsert generated predictions into the predictions table.
 
     Args:
-        predictions: Output of generate_predictions() — (company_id,
-            prediction_date, trend_prediction, risk_score) tuples.
+        predictions: Output of generate_predictions().
 
     Returns:
-        The number of rows upserted. 0 if `predictions` is empty (no
-        database call is made in that case).
+        Number of rows upserted.
     """
     if not predictions:
         logger.warning("write_predictions: nothing to write.")
@@ -128,24 +100,23 @@ def write_predictions(predictions: list[tuple]) -> int:
 
 def run_predictions(symbols: list[str] | None = None) -> int:
     """
-    End-to-end prediction run: generate ensembled predictions for every
-    matching company and write them to the database.
+    Generate and store predictions for matching companies.
 
     Args:
-        symbols: If provided, restrict to these ticker symbols.
+        symbols: Optional ticker symbols to restrict predictions to.
 
     Returns:
-        The number of predictions.py rows upserted.
+        Number of predictions upserted.
 
     Raises:
-        ModelNotTrainedError: If train_model.py hasn't been run yet.
+        ModelNotTrainedError: If trained models are unavailable.
     """
     predictions = generate_predictions(symbols)
     return write_predictions(predictions)
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments for standalone script execution."""
+    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
         description="Generate ensembled trend/risk predictions and write them to the predictions table."
     )
@@ -160,7 +131,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Entry point for standalone script execution."""
+    """Run the prediction pipeline."""
     args = parse_args()
     try:
         written = run_predictions(symbols=args.symbols)

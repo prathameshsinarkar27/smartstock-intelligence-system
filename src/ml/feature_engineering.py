@@ -1,13 +1,8 @@
 """
 feature_engineering.py
 
-Builds the feature matrix used by train_model.py, evaluate_model.py, and
-predict.py: one row per (company, date), combining price-derived
-technical indicators (reusing src/analytics/technical_indicators.py) with
-a rolling sentiment signal (reusing src/sentiment/sentiment_pipeline.py's
-output in sentiment_scores), plus a forward-looking trend label used only
-for training.
-
+Builds the feature matrix used by the ML pipeline by combining technical
+indicators, rolling sentiment, and forward-looking training labels.
 """
 
 from datetime import date, timedelta
@@ -21,28 +16,21 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Forward-looking label parameters (see module docstring).
+# Forward-looking label parameters.
 FORWARD_HORIZON_DAYS = 5
 UP_THRESHOLD = 0.02
 DOWN_THRESHOLD = -0.02
 
-# How many trailing calendar days of news sentiment feed the sentiment_7d
-# feature. 7 days (rather than e.g. 1) smooths over the fact that news
-# coverage is sparse and bursty for most companies.
+# Trailing calendar days used for the sentiment feature.
 SENTIMENT_LOOKBACK_DAYS = 7
 
-# Minimum rows of price history a company needs before any feature row is
-# considered usable (matches the longest lookback among the indicators
-# below — SMA-50 — plus a small buffer so early-window edge effects don't
-# leak into training).
+# Minimum history required for reliable feature calculation.
 MIN_PRICE_HISTORY_ROWS = 55
 
 LABEL_TO_INT = {"down": 0, "flat": 1, "up": 2}
 INT_TO_LABEL = {value: key for key, value in LABEL_TO_INT.items()}
 
-# Single source of truth for column order — train_model.py, evaluate_model.py,
-# and predict.py all import this rather than hardcoding column lists, so a
-# model trained with one ordering is never fed a differently-ordered row.
+# Shared feature order used by training, evaluation, and inference.
 FEATURE_COLUMNS = [
     "close_to_sma_20",
     "close_to_sma_50",
@@ -61,14 +49,13 @@ FEATURE_COLUMNS = [
 
 def _get_tracked_companies(symbols: list[str] | None = None) -> list[tuple[int, str]]:
     """
-    Fetch (company_id, symbol) pairs for companies to build features for.
+    Fetch company IDs and symbols used for feature generation.
 
     Args:
-        symbols: If provided, restrict to these ticker symbols. If None,
-            every company in the companies table is used.
+        symbols: Optional list of ticker symbols to filter by.
 
     Returns:
-        A list of (company_id, symbol) tuples, ordered by symbol.
+        Company ID and symbol pairs ordered by symbol.
     """
     upper_symbols = [s.upper() for s in symbols] if symbols else None
 
@@ -89,15 +76,13 @@ def _get_tracked_companies(symbols: list[str] | None = None) -> list[tuple[int, 
 
 def _fetch_price_history(company_id: int) -> pd.DataFrame:
     """
-    Fetch a company's full daily price/volume history, oldest first.
+    Fetch a company's daily price and volume history.
 
     Args:
-        company_id: The company's surrogate key.
+        company_id: Company's database ID.
 
     Returns:
-        A DataFrame with columns date, close, volume, sorted ascending by
-        date. Empty DataFrame (same columns, zero rows) if no price
-        history is loaded for this company.
+        DataFrame with date, close, and volume sorted by date.
     """
     query = """
         SELECT date, close, volume
@@ -116,19 +101,13 @@ def _fetch_price_history(company_id: int) -> pd.DataFrame:
 
 def _fetch_sentiment_events(company_id: int) -> pd.DataFrame:
     """
-    Fetch a company's scored news articles as (calendar date, signed
-    sentiment value) pairs, for building the rolling sentiment_7d feature.
+    Fetch scored news sentiment events for a company.
 
     Args:
-        company_id: The company's surrogate key.
+        company_id: Company's database ID.
 
     Returns:
-        A DataFrame with columns event_date (a date, not a timestamp —
-        published_date's time-of-day doesn't matter here) and
-        signed_value (+confidence_score for positive, -confidence_score
-        for negative, 0.0 for neutral). Empty DataFrame (same columns,
-        zero rows) if this company has no scored articles, or its
-        articles have a null published_date.
+        DataFrame with event dates and signed sentiment values.
     """
     query = """
         SELECT na.published_date, ss.sentiment, ss.confidence_score
@@ -159,43 +138,29 @@ def _fetch_sentiment_events(company_id: int) -> pd.DataFrame:
 
 def _rolling_sentiment_series(price_dates: pd.Series, sentiment_events: pd.DataFrame) -> pd.Series:
     """
-    Compute a trailing-SENTIMENT_LOOKBACK_DAYS-day mean sentiment value
-    aligned to each price date, with no lookahead (a price date only ever
-    sees sentiment published on or before it).
+    Compute trailing sentiment aligned to each price date without lookahead.
 
     Args:
-        price_dates: The date column of a company's price history,
-            ascending.
-        sentiment_events: Output of _fetch_sentiment_events() for the
-            same company.
+        price_dates: Ascending price dates.
+        sentiment_events: Scored sentiment events for the company.
 
     Returns:
-        A Series the same length as price_dates: the mean signed
-        sentiment value across all scored articles published in the
-        trailing SENTIMENT_LOOKBACK_DAYS calendar days (inclusive of the
-        price date itself). 0.0 (a neutral prior, not a missing value)
-        for any date with no scored articles in that window — including
-        every date for a company with no scored news at all — so the
-        feature is always numeric and never needs separate NaN handling
-        downstream.
+        Rolling mean sentiment for each price date, using 0.0 when
+        no scored articles are available.
     """
     if sentiment_events.empty:
         return pd.Series(0.0, index=price_dates.index)
 
-    # One row per calendar day with news, averaging same-day articles.
+    # Average multiple articles published on the same calendar day.
     daily = sentiment_events.groupby("event_date")["signed_value"].mean()
     daily.index = pd.to_datetime(daily.index)
     daily = daily.sort_index()
 
-    # Trailing window over calendar days (not trading days), so a
-    # Saturday sentiment_7d value still reflects last week's news even
-    # though the market was closed.
+    # Use calendar days so weekend news remains part of the rolling window.
     rolling = daily.rolling(f"{SENTIMENT_LOOKBACK_DAYS}D", min_periods=1).mean()
 
     price_datetimes = pd.to_datetime(price_dates)
-    # asof: for each price date, the most recent rolling value at or
-    # before that date. Dates before any news exists get NaN, filled to
-    # the same 0.0 neutral prior used for companies with no news at all.
+    # Align each price date with the latest available sentiment value.
     aligned = rolling.reindex(rolling.index.union(price_datetimes)).sort_index().ffill()
     result = aligned.reindex(price_datetimes).fillna(0.0)
     result.index = price_dates.index
@@ -204,18 +169,14 @@ def _rolling_sentiment_series(price_dates: pd.Series, sentiment_events: pd.DataF
 
 def _build_labels(closes: pd.Series) -> pd.Series:
     """
-    Build the forward-looking trend label for each date in a company's
-    price history.
+    Build forward-looking trend labels from closing prices.
 
     Args:
-        closes: Closing prices, ascending by date.
+        closes: Closing prices sorted by date.
 
     Returns:
-        A Series of "up"/"down"/"flat" strings, the same length as
-        `closes`. The last FORWARD_HORIZON_DAYS entries are None — there
-        isn't enough future price data yet to know their forward
-        return — which is intentional: those rows are for inference
-        (predict.py), not training.
+        Series containing "up", "down", or "flat" labels.
+        Final rows without future data receive None.
     """
     forward_return = closes.shift(-FORWARD_HORIZON_DAYS) / closes - 1.0
 
@@ -233,22 +194,15 @@ def _build_labels(closes: pd.Series) -> pd.Series:
 
 def compute_features_for_company(company_id: int, symbol: str) -> pd.DataFrame:
     """
-    Build the full feature (+ label) DataFrame for a single company.
+    Build features and labels for a single company.
 
     Args:
-        company_id: The company's surrogate key.
-        symbol: The company's ticker symbol (carried through as a column
-            for convenience — callers combining multiple companies need
-            it to tell rows apart).
+        company_id: Company's database ID.
+        symbol: Stock ticker symbol.
 
     Returns:
-        A DataFrame with columns: company_id, symbol, date, every column
-        in FEATURE_COLUMNS, and label. Rows before MIN_PRICE_HISTORY_ROWS
-        of history has accumulated have NaN feature values (insufficient
-        indicator lookback); the last FORWARD_HORIZON_DAYS rows have a
-        None label (see _build_labels). Empty DataFrame (same columns) if
-        the company has fewer than MIN_PRICE_HISTORY_ROWS price rows
-        loaded at all.
+        DataFrame containing company metadata, features, and labels.
+        Returns an empty DataFrame when insufficient price history exists.
     """
     columns = ["company_id", "symbol", "date", *FEATURE_COLUMNS, "label"]
 
@@ -296,19 +250,13 @@ def compute_features_for_company(company_id: int, symbol: str) -> pd.DataFrame:
 
 def build_feature_dataset(symbols: list[str] | None = None) -> pd.DataFrame:
     """
-    Build the combined feature (+ label) dataset across all tracked
-    companies (or a subset).
+    Build the combined feature dataset across tracked companies.
 
     Args:
-        symbols: If provided, restrict to these ticker symbols. If None,
-            every company in the companies table is used.
+        symbols: Optional list of ticker symbols to include.
 
     Returns:
-        A DataFrame combining compute_features_for_company()'s output for
-        every matching company, with a fresh 0-based index. Companies
-        with fewer than MIN_PRICE_HISTORY_ROWS price rows contribute no
-        rows at all. Empty DataFrame (with the expected columns) if no
-        companies match or none have enough history yet.
+        Combined feature DataFrame with a fresh index.
     """
     companies = _get_tracked_companies(symbols)
 
@@ -334,15 +282,13 @@ def build_feature_dataset(symbols: list[str] | None = None) -> pd.DataFrame:
 
 def build_training_rows(dataset: pd.DataFrame) -> pd.DataFrame:
     """
-    Filter a feature dataset down to rows usable for training/evaluation:
-    complete features and a non-null label.
+    Filter a feature dataset to rows with complete features and labels.
 
     Args:
-        dataset: Output of build_feature_dataset().
+        dataset: Feature dataset.
 
     Returns:
-        The subset of rows with no NaN in FEATURE_COLUMNS and a non-null
-        label, with a fresh 0-based index.
+        Training-ready rows with a fresh index.
     """
     usable = dataset.dropna(subset=[*FEATURE_COLUMNS, "label"])
     return usable.reset_index(drop=True)
@@ -350,19 +296,13 @@ def build_training_rows(dataset: pd.DataFrame) -> pd.DataFrame:
 
 def build_latest_inference_rows(dataset: pd.DataFrame) -> pd.DataFrame:
     """
-    Reduce a feature dataset to one row per company: its most recent date
-    with complete features, regardless of whether it has a label (rows
-    usable for inference are, by construction, exactly the ones near the
-    tail that lack a label — see build_feature_dataset's docstring).
+    Select the latest complete-feature row for each company.
 
     Args:
-        dataset: Output of build_feature_dataset().
+        dataset: Feature dataset.
 
     Returns:
-        One row per symbol (its latest complete-feature row), with a
-        fresh 0-based index. A company contributes no row if none of its
-        rows have complete features (shouldn't happen for any company
-        that cleared MIN_PRICE_HISTORY_ROWS, barring a data gap).
+        One latest complete-feature row per symbol.
     """
     complete = dataset.dropna(subset=FEATURE_COLUMNS)
     if complete.empty:

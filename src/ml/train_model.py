@@ -1,29 +1,14 @@
 """
 train_model.py
 
-Trains two classifiers — a scikit-learn RandomForestClassifier and an
-XGBoost XGBClassifier — on the pooled, cross-company feature dataset from
-src/ml/feature_engineering.py, to predict the forward trend label
-("up"/"down"/"flat", see feature_engineering.py's module docstring for how
-that label is defined).
+Trains RandomForest and XGBoost classifiers on the pooled feature dataset
+to predict forward trend labels ("up", "down", "flat").
 
-Both models are trained and saved (rather than picking a single "best"
-one) because predict.py uses them together: it averages their predicted
-class probabilities (a simple, standard ensembling approach) rather than
-committing to whichever one scored marginally higher on a single holdout
-split. evaluate_model.py reports metrics for each model individually and
-for that same ensemble, so the ensembling choice is itself verifiable.
+Models are saved separately and used together by predict.py, which averages
+their class probabilities. Evaluation reports metrics for both models and
+the ensemble.
 
-The train/test split is chronological, not random: every row at or before
-a cutoff date is training data, everything after is the holdout test set.
-A random split would leak information (a model can partly memorize
-company-specific price regimes it saw in "test" rows from the same week
-as "train" rows for the same company), which a random train_test_split
-would not catch but a realistic backtest-style split does.
-
-Usage (from project root, with venv activated):
-    python -m src.ml.train_model
-    python -m src.ml.train_model --symbols AAPL MSFT JPM
+The train/test split is chronological to prevent future-data leakage.
 """
 
 import argparse
@@ -51,32 +36,29 @@ RANDOM_FOREST_PATH = MODELS_DIR / "random_forest_trend_model.joblib"
 XGBOOST_PATH = MODELS_DIR / "xgboost_trend_model.joblib"
 METADATA_PATH = MODELS_DIR / "model_metadata.json"
 
-# Fraction of (chronologically-sorted) rows held out as the test set.
+# Fraction of chronologically sorted rows held out for testing.
 TEST_SIZE = 0.2
 
 RANDOM_STATE = 42
 
 
 class TrainingDataError(Exception):
-    """Raised when there isn't enough usable data to train a model."""
+    """Raised when there is insufficient usable data for training."""
 
 
 class ModelNotTrainedError(Exception):
-    """Raised when evaluate_model.py or predict.py is run before train_model.py."""
+    """Raised when trained model artifacts are unavailable."""
 
 
 def load_trained_models() -> tuple:
     """
-    Load the saved RandomForest model, XGBoost model, and training
-    metadata from models/. Shared by evaluate_model.py and predict.py so
-    there's exactly one place that knows the on-disk artifact layout.
+    Load the saved RandomForest, XGBoost, and training metadata.
 
     Returns:
         A (rf_model, xgb_model, metadata) tuple.
 
     Raises:
-        ModelNotTrainedError: If any of the three expected files is
-            missing — i.e. train_model.py hasn't been run yet.
+        ModelNotTrainedError: If any expected model artifact is missing.
     """
     missing = [
         str(path) for path in (RANDOM_FOREST_PATH, XGBOOST_PATH, METADATA_PATH) if not path.exists()
@@ -95,24 +77,17 @@ def load_trained_models() -> tuple:
 
 def chronological_split(train_rows, test_size: float = TEST_SIZE):
     """
-    Split a training dataset into train/test sets by date, not randomly.
+    Split training data chronologically.
 
     Args:
-        train_rows: Output of build_training_rows() — every row has a
-            complete feature set and a non-null label.
-        test_size: Fraction of rows to hold out as the test set, taken
-            from the most recent dates.
+        train_rows: Training rows with complete features and labels.
+        test_size: Fraction of recent dates reserved for testing.
 
     Returns:
-        A (train_df, test_df, cutoff_date) tuple. Every row in train_df
-        has date <= cutoff_date; every row in test_df has date >
-        cutoff_date. cutoff_date is returned so it can be recorded in
-        model_metadata.json — evaluate_model.py uses it to reconstruct
-        the same held-out test set later.
+        A (train_df, test_df, cutoff_date) tuple.
 
     Raises:
-        TrainingDataError: If there are too few distinct dates to form a
-            non-empty train and test split (fewer than 5 unique dates).
+        TrainingDataError: If there are too few dates or an empty split.
     """
     unique_dates = sorted(train_rows["date"].unique())
 
@@ -140,15 +115,11 @@ def chronological_split(train_rows, test_size: float = TEST_SIZE):
 
 def train_random_forest(X_train, y_train) -> RandomForestClassifier:
     """
-    Fit a RandomForestClassifier with settings suited to a small tabular
-    financial feature set: enough trees to stabilize predictions, a
-    depth cap to reduce overfitting on a modest number of training rows,
-    and class_weight="balanced" since "flat" rows typically outnumber
-    "up"/"down" rows given the threshold-based label definition.
+    Fit a RandomForestClassifier for the 3-class trend task.
 
     Args:
-        X_train: Feature matrix (FEATURE_COLUMNS order), training rows only.
-        y_train: Integer-encoded labels (see LABEL_TO_INT), training rows only.
+        X_train: Training feature matrix.
+        y_train: Integer-encoded training labels.
 
     Returns:
         The fitted classifier.
@@ -167,11 +138,11 @@ def train_random_forest(X_train, y_train) -> RandomForestClassifier:
 
 def train_xgboost(X_train, y_train) -> XGBClassifier:
     """
-    Fit an XGBClassifier for the same 3-class trend prediction task.
+    Fit an XGBClassifier for the 3-class trend task.
 
     Args:
-        X_train: Feature matrix (FEATURE_COLUMNS order), training rows only.
-        y_train: Integer-encoded labels (see LABEL_TO_INT), training rows only.
+        X_train: Training feature matrix.
+        y_train: Integer-encoded training labels.
 
     Returns:
         The fitted classifier.
@@ -194,24 +165,16 @@ def train_xgboost(X_train, y_train) -> XGBClassifier:
 
 def run_training(symbols: list[str] | None = None) -> dict:
     """
-    End-to-end training run: build the feature dataset, split it
-    chronologically, train both classifiers, save them plus metadata to
-    models/, and return that metadata.
+    Build features, train both classifiers, and save models and metadata.
 
     Args:
-        symbols: If provided, restrict training data to these ticker
-            symbols. If None, every company with enough history is used.
+        symbols: Optional ticker symbols to restrict training data.
 
     Returns:
-        The metadata dict that was written to model_metadata.json (see
-        that file for its exact shape) — feature_columns, label_to_int,
-        test_cutoff_date, trained_at, row counts, and each model's
-        holdout accuracy.
+        Metadata written to model_metadata.json.
 
     Raises:
-        TrainingDataError: If build_feature_dataset() yields no usable
-            training rows, or chronological_split() can't form a valid
-            train/test split (see chronological_split's docstring).
+        TrainingDataError: If usable training data or a valid split is unavailable.
     """
     dataset = build_feature_dataset(symbols)
     train_rows = build_training_rows(dataset)
@@ -273,7 +236,7 @@ def run_training(symbols: list[str] | None = None) -> dict:
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments for standalone script execution."""
+    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
         description="Train Random Forest and XGBoost trend classifiers on the pooled feature dataset."
     )
@@ -288,7 +251,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Entry point for standalone script execution."""
+    """Run the training pipeline."""
     args = parse_args()
     try:
         run_training(symbols=args.symbols)
