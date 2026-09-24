@@ -1,13 +1,8 @@
 """
 stock_assistant.py
 
-Orchestrates the AI Research Assistant (Phase 10): gathers a company's
-existing structured data (price/fundamentals from
-src.analytics.kpi_calculator, sentiment counts, and the Phase 8/9 ML
-prediction + SHAP explanation), builds a prompt from it
-(src/genai/prompts.py), and calls Gemini for a structured analysis
-(src/genai/llm_utils.py).
-
+Orchestrates the AI Research Assistant by gathering company data,
+building an analysis prompt, and calling Gemini for structured insights.
 """
 
 from datetime import date, datetime, timezone
@@ -33,22 +28,12 @@ _cache: dict[tuple[str, date], dict[str, Any]] = {}
 
 
 def clear_cache() -> None:
-    """Drop all cached AI insights, forcing the next request to regenerate them."""
+    """Clear all cached AI insights."""
     _cache.clear()
 
 
 def _fetch_latest_prediction(symbol: str) -> dict[str, Any] | None:
-    """
-    Fetch a company's latest trend prediction label (the one piece of
-    Phase 8 output not already included in get_company_kpis()'s
-    ml_risk_score field).
-
-    Args:
-        symbol: Stock ticker symbol.
-
-    Returns:
-        A dict with trend_prediction, or None if no prediction exists yet.
-    """
+    """Fetch the company's latest trend prediction."""
     query = """
         SELECT trend_prediction
         FROM latest_predictions
@@ -67,17 +52,7 @@ def _fetch_latest_prediction(symbol: str) -> dict[str, Any] | None:
 
 
 def _fetch_sentiment_counts(symbol: str) -> dict[str, int]:
-    """
-    Fetch a company's scored-article sentiment counts for the prompt's
-    news sentiment section.
-
-    Args:
-        symbol: Stock ticker symbol.
-
-    Returns:
-        A dict with positive_count, negative_count, neutral_count — all
-        0 if the company has no scored articles yet.
-    """
+    """Fetch scored-article sentiment counts for a company."""
     query = """
         SELECT positive_count, negative_count, neutral_count
         FROM company_sentiment_summary
@@ -97,24 +72,7 @@ def _fetch_sentiment_counts(symbol: str) -> dict[str, int]:
 
 
 def _build_context(symbol: str) -> dict[str, Any] | None:
-    """
-    Gather everything build_company_analysis_prompt() needs for one
-    company, from whichever of Phases 1-9's data happens to be available.
-
-    Args:
-        symbol: Stock ticker symbol.
-
-    Returns:
-        None if the symbol isn't a tracked company at all (no
-        companies-table row). Otherwise a context dict — always including
-        company profile and price/fundamentals (from get_company_kpis(),
-        Phase 5/6/7/8) and sentiment counts (Phase 7, all zero if none
-        scored yet); ml_trend_prediction and ml_top_factors are included
-        only if that data exists (a company with no ML prediction yet
-        still gets a context dict, just a thinner one — the prompt
-        renders "not available" for whatever's missing, and the assistant
-        still has price/sentiment data to reason about).
-    """
+    """Gather company, market, sentiment, and ML data for analysis."""
     kpis = get_company_kpis(symbol)
     if kpis is None:
         return None
@@ -157,28 +115,9 @@ def _build_context(symbol: str) -> dict[str, Any] | None:
 
 def get_company_ai_insight(symbol: str, force_refresh: bool = False) -> dict[str, Any] | None:
     """
-    Get (generating and caching if needed) an AI-written analysis of one
-    company, for the Company Detail page's AI Insights section and AI
-    Recommendation KPI card.
+    Generate or retrieve a cached AI analysis for a company.
 
-    Args:
-        symbol: Stock ticker symbol, e.g. "AAPL".
-        force_refresh: If True, bypass the cache and call Gemini again
-            even if today's result is already cached.
-
-    Returns:
-        None if the symbol isn't a tracked company. Otherwise a dict with
-        symbol, outlook ("Bullish"/"Bearish"/"Mixed"/"Cautious"), summary,
-        key_considerations (a list of strings), and generated_at (a UTC
-        datetime) — cached per (symbol, calendar day), so repeated calls
-        on the same day return the same dict without a new API call.
-
-    Raises:
-        LLMConfigError: If GEMINI_API_KEY isn't set (src.genai.llm_utils).
-        LLMRequestError: If the Gemini API call fails or its response
-            can't be parsed (src.genai.llm_utils). Callers on the
-            dashboard should catch this and render an empty state, the
-            same pattern used for ModelNotTrainedError in Phase 8/9.
+    Results are cached per symbol and calendar day.
     """
     cache_key = (symbol.upper(), date.today())
 

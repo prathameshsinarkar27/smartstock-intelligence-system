@@ -1,22 +1,8 @@
 """
 prompts.py
 
-Prompt templates and the structured-output schema for the AI Research
-Assistant (src/genai/stock_assistant.py). Pure string/schema construction —
-no network calls, nothing that touches the Gemini API directly (see
-src/genai/llm_utils.py for that).
-
-Responsible-use framing: this assistant sits inside a stock analytics
-dashboard, so its output could plausibly be mistaken for investment
-advice if it weren't careful about its own framing. SYSTEM_INSTRUCTION
-explicitly constrains the model to:
-    - reason only from the structured data it's given, not general
-      knowledge about the company (which could be stale, wrong, or
-      contradict the dashboard's own numbers);
-    - describe an "outlook" classification rather than issue buy/sell/hold
-      instructions;
-    - stay inside the provided JSON schema (CompanyAnalysis) so the
-      dashboard can render it reliably instead of parsing free text.
+Prompt templates and structured-output schema for the AI Research Assistant.
+This module handles prompt/schema construction only and makes no API calls.
 """
 
 from typing import Literal
@@ -27,20 +13,7 @@ OUTLOOK_VALUES = ("Bullish", "Bearish", "Mixed", "Cautious")
 
 
 class CompanyAnalysis(BaseModel):
-    """
-    The structured shape requested from Gemini for one company's AI
-    Insights section (Phase 10).
-
-    Attributes:
-        outlook: A single-word informational characterization of the
-            combined signals — not a buy/sell/hold instruction. One of
-            OUTLOOK_VALUES.
-        summary: A short (2-4 sentence) narrative synthesizing the
-            provided technical, sentiment, and ML signals.
-        key_considerations: 3-5 short bullet points a reader should weigh
-            — deliberately named "considerations," not "reasons to
-            buy/sell," to keep the framing informational.
-    """
+    """Structured response schema for company AI insights."""
 
     outlook: Literal["Bullish", "Bearish", "Mixed", "Cautious"]
     summary: str = Field(..., min_length=1, max_length=800)
@@ -72,39 +45,14 @@ Follow these rules strictly:
 
 
 def _fmt(value, prefix: str = "", suffix: str = "", scale: float = 1.0) -> str:
-    """
-    Format a possibly-None numeric value for prompt text.
-
-    Args:
-        value: The value to format, or None.
-        prefix: Text to prepend (e.g. "$").
-        suffix: Text to append (e.g. "%").
-        scale: Multiplier applied before formatting (e.g. 100 to turn a
-            0-1 fraction into a percentage).
-
-    Returns:
-        "not available" if `value` is None, else the formatted string.
-    """
+    """Format an optional numeric value for prompt text."""
     if value is None:
         return "not available"
     return f"{prefix}{value * scale:,.2f}{suffix}"
 
 
 def build_company_analysis_prompt(context: dict) -> str:
-    """
-    Build the user-turn prompt for one company's analysis, from a
-    structured context dict (see
-    src.genai.stock_assistant._build_context() for exactly what it
-    contains).
-
-    Args:
-        context: A dict of company profile, price, technical, sentiment,
-            and ML prediction/explanation data.
-
-    Returns:
-        A prompt string ready to pass to
-        src.genai.llm_utils.generate_structured_analysis() as `prompt`.
-    """
+    """Build the analysis prompt from a structured company context."""
     lines = [
         f"Company: {context.get('company_name', 'Unknown')} ({context.get('symbol', 'N/A')})",
         f"Sector / Industry: {context.get('sector', 'Unknown')} / {context.get('industry', 'Unknown')}",
