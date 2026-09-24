@@ -1,10 +1,8 @@
 """
 fetch_company_data.py
 
-Pulls company profile and basic fundamentals data from the Finnhub API for a
-list of stock symbols, and writes the raw, untouched response data to
-data/raw/ as a single combined CSV file.
-
+Fetches company profiles and basic fundamentals from Finnhub and saves
+the combined raw data to a CSV file.
 """
 
 import argparse
@@ -25,9 +23,7 @@ FINNHUB_PROFILE_URL = "https://finnhub.io/api/v1/stock/profile2"
 FINNHUB_METRICS_URL = "https://finnhub.io/api/v1/stock/metric"
 RATE_LIMIT_SLEEP_SECONDS = 1.1  # Finnhub free tier: ~60 calls/minute
 
-# Columns written to the output CSV, in order. Maps to fields blueprinted in
-# the `companies` table (database/tables.sql, Phase 2) where applicable, plus
-# a couple of extra raw fields kept for completeness.
+# Output fields mapped to the companies table where applicable.
 OUTPUT_COLUMNS = [
     "symbol",
     "company_name",
@@ -47,20 +43,7 @@ class CompanyDataFetchError(Exception):
 
 
 def fetch_company_profile(symbol: str) -> dict[str, Any]:
-    """
-    Call the Finnhub /stock/profile2 endpoint for a single symbol.
-
-    Args:
-        symbol: Stock ticker symbol, e.g. "AAPL".
-
-    Returns:
-        The parsed JSON response from Finnhub containing company profile
-        fields such as name, industry/finnhubIndustry, marketCapitalization,
-        country, currency, and exchange.
-
-    Raises:
-        CompanyDataFetchError: If the HTTP request fails.
-    """
+    """Fetch the Finnhub company profile for a symbol."""
     try:
         response = requests.get(
             FINNHUB_PROFILE_URL,
@@ -80,20 +63,7 @@ def fetch_company_profile(symbol: str) -> dict[str, Any]:
 
 
 def fetch_company_metrics(symbol: str) -> dict[str, Any]:
-    """
-    Call the Finnhub /stock/metric endpoint for a single symbol to retrieve
-    basic fundamentals (P/E ratio, EPS, etc.).
-
-    Args:
-        symbol: Stock ticker symbol, e.g. "AAPL".
-
-    Returns:
-        The "metric" sub-dictionary from Finnhub's response, containing
-        keys like "peNormalizedAnnual" and "epsInclExtraItemsAnnual".
-
-    Raises:
-        CompanyDataFetchError: If the HTTP request fails.
-    """
+    """Fetch basic fundamentals from Finnhub for a symbol."""
     try:
         response = requests.get(
             FINNHUB_METRICS_URL,
@@ -110,18 +80,7 @@ def fetch_company_metrics(symbol: str) -> dict[str, Any]:
 
 def _combine_profile_and_metrics(symbol: str, profile: dict[str, Any],
                                   metrics: dict[str, Any]) -> dict[str, Any]:
-    """
-    Merge a company profile and metrics dict into one flat row matching
-    OUTPUT_COLUMNS.
-
-    Args:
-        symbol: Stock ticker symbol.
-        profile: Output of fetch_company_profile().
-        metrics: Output of fetch_company_metrics().
-
-    Returns:
-        A dict with keys matching OUTPUT_COLUMNS, ready to write as a CSV row.
-    """
+    """Combine profile and metrics data into an output row."""
     return {
         "symbol": symbol.upper(),
         "company_name": profile.get("name", ""),
@@ -137,21 +96,7 @@ def _combine_profile_and_metrics(symbol: str, profile: dict[str, Any],
 
 
 def fetch_and_save_companies(symbols: list[str], output_dir: Path | None = None) -> Path:
-    """
-    Fetch profile + metrics data for a list of symbols and save them as one
-    combined CSV file.
-
-    Args:
-        symbols: List of stock ticker symbols to fetch.
-        output_dir: Directory to write the CSV file into. Defaults to
-            settings.data_raw_dir.
-
-    Returns:
-        The path to the written CSV file.
-
-    Raises:
-        CompanyDataFetchError: If no symbols could be fetched successfully.
-    """
+    """Fetch company data for the given symbols and save it as CSV."""
     if output_dir is None:
         output_dir = settings.data_raw_dir
 
@@ -198,7 +143,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Entry point for standalone script execution."""
+    """Run the company data fetcher."""
     if not settings.finnhub_api_key:
         logger.error(
             "FINNHUB_API_KEY is not set. Add it to your .env file before running this script. "

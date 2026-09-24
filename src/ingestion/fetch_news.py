@@ -1,10 +1,8 @@
 """
 fetch_news.py
 
-Pulls recent news articles from NewsAPI.org for a list of stock symbols (used
-as search queries), and writes the raw, untouched response data to data/raw/
-as CSV files — one file per symbol.
-
+Fetches recent news articles from NewsAPI for stock symbols and saves
+one raw CSV file per symbol.
 """
 
 import argparse
@@ -40,23 +38,7 @@ class NewsFetchError(Exception):
 
 
 def fetch_news_for_symbol(symbol: str, page_size: int = DEFAULT_PAGE_SIZE) -> list[dict[str, Any]]:
-    """
-    Call the NewsAPI.org /v2/everything endpoint, using the symbol as the
-    search query.
-
-    Args:
-        symbol: Stock ticker symbol, used as the search term, e.g. "AAPL".
-        page_size: Number of articles to request (max 100 on most plans).
-
-    Returns:
-        A list of raw article dicts as returned by NewsAPI.org, each
-        containing fields like "title", "description", "content", "source",
-        "publishedAt", and "url".
-
-    Raises:
-        NewsFetchError: If the HTTP request fails or NewsAPI returns an
-            error status.
-    """
+    """Fetch recent news articles for a stock symbol."""
     try:
         response = requests.get(
             NEWSAPI_EVERYTHING_URL,
@@ -84,16 +66,7 @@ def fetch_news_for_symbol(symbol: str, page_size: int = DEFAULT_PAGE_SIZE) -> li
 
 
 def _flatten_article(symbol: str, article: dict[str, Any]) -> dict[str, Any]:
-    """
-    Convert a raw NewsAPI article dict into a flat row matching OUTPUT_COLUMNS.
-
-    Args:
-        symbol: The stock symbol this article was fetched for.
-        article: A single article dict from the NewsAPI response.
-
-    Returns:
-        A dict with keys matching OUTPUT_COLUMNS, ready to write as a CSV row.
-    """
+    """Convert a NewsAPI article into an output row."""
     source = article.get("source") or {}
     return {
         "symbol": symbol.upper(),
@@ -106,21 +79,7 @@ def _flatten_article(symbol: str, article: dict[str, Any]) -> dict[str, Any]:
 
 
 def save_news_to_csv(symbol: str, articles: list[dict[str, Any]], output_dir: Path) -> Path:
-    """
-    Write a list of news articles for one symbol to a CSV file in the raw
-    data directory.
-
-    Args:
-        symbol: Stock ticker symbol, used in the output filename.
-        articles: List of raw article dicts from fetch_news_for_symbol().
-        output_dir: Directory to write the CSV file into.
-
-    Returns:
-        The path to the written CSV file.
-
-    Raises:
-        NewsFetchError: If there are no articles to write.
-    """
+    """Write news articles for one symbol to a CSV file."""
     if not articles:
         raise NewsFetchError(f"No articles available for symbol '{symbol}'")
 
@@ -139,19 +98,7 @@ def save_news_to_csv(symbol: str, articles: list[dict[str, Any]], output_dir: Pa
 
 
 def fetch_and_save_symbols(symbols: list[str], output_dir: Path | None = None) -> list[Path]:
-    """
-    Fetch and save news articles for a list of symbols, respecting
-    NewsAPI's rate limit by sleeping between requests.
-
-    Args:
-        symbols: List of stock ticker symbols to fetch news for.
-        output_dir: Directory to write CSV files into. Defaults to
-            settings.data_raw_dir.
-
-    Returns:
-        A list of paths to successfully written CSV files. Symbols that
-        failed to fetch are logged as errors and skipped, not raised.
-    """
+    """Fetch and save news articles for a list of symbols."""
     if output_dir is None:
         output_dir = settings.data_raw_dir
 
@@ -173,7 +120,7 @@ def fetch_and_save_symbols(symbols: list[str], output_dir: Path | None = None) -
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments for standalone script execution."""
+    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Fetch news articles from NewsAPI.org.")
     parser.add_argument(
         "--symbols",
@@ -191,7 +138,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Entry point for standalone script execution."""
+    """Run the news fetcher."""
     if not settings.newsapi_api_key:
         logger.error(
             "NEWSAPI_API_KEY is not set. Add it to your .env file before running this script. "
