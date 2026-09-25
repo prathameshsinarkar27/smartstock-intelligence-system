@@ -1,10 +1,8 @@
 """
 run_pipeline.py
 
-Single-entry-point for the SmartStock Intelligence Platform's
-data pipeline. Runs the complete data collection + ETL workflow — ingestion
-(stock prices, company fundamentals, news) followed by ETL (clean,
-transform, load) — with one command:
+Runs the complete SmartStock data pipeline: ingestion, cleaning,
+transformation, and loading into PostgreSQL.
 
     python -m src.pipeline.run_pipeline --symbols AAPL MSFT
 
@@ -36,16 +34,7 @@ logger = get_logger(__name__)
 
 @dataclass
 class StageResult:
-    """
-    Outcome of a single pipeline stage, used to build the end-of-run
-    summary.
-
-    Attributes:
-        name: Human-readable stage name, e.g. "Fetch stock prices (AAPL)".
-        success: Whether the stage completed without error.
-        duration_seconds: How long the stage took to run.
-        detail: Optional extra context (e.g. an error message) for the summary.
-    """
+    """Outcome and timing information for a pipeline stage."""
 
     name: str
     success: bool
@@ -55,15 +44,7 @@ class StageResult:
 
 @dataclass
 class PipelineRunReport:
-    """
-    Aggregated outcome of an entire pipeline run, used to decide the
-    process exit code and to print the final summary.
-
-    Attributes:
-        stage_results: One StageResult per stage that was attempted.
-        critical_failure: Set if a pipeline-critical stage failed, which
-            stops the run early regardless of remaining symbols.
-    """
+    """Aggregated results for a complete pipeline run."""
 
     stage_results: list[StageResult] = field(default_factory=list)
     critical_failure: bool = False
@@ -76,36 +57,18 @@ class PipelineRunReport:
 
 def _run_stage(report: PipelineRunReport, stage_name: str, stage_fn, *args, result_check=None, **kwargs):
     """
-    Run a single pipeline stage with consistent start/end/timing logging
-    and error capture, recording the outcome on the shared report.
+    Run a pipeline stage with logging, timing, and error handling.
 
     Args:
-        report: The PipelineRunReport to append this stage's result to.
-        stage_name: Human-readable name for logging, e.g. "Fetch news (AAPL)".
-        stage_fn: The existing ingestion/ETL function to call.
-        *args: Positional arguments forwarded to stage_fn.
-        result_check: Optional callable taking stage_fn's return value and
-            returning True if the stage should be considered successful.
-            Needed because some existing ETL functions (e.g.
-            run_transform_for_symbol, run_load_for_symbol) catch their own
-            per-data-type errors internally and return a partial dict
-            instead of raising — so the mere absence of an exception does
-            not guarantee the work this stage cares about actually
-            happened. When omitted, any non-exception return counts as
-            success (correct for stages that always raise on failure,
-            e.g. fetch_and_save_companies).
-        **kwargs: Keyword arguments forwarded to stage_fn.
+        report: Report receiving the stage result.
+        stage_name: Human-readable stage name.
+        stage_fn: Function executed for the stage.
+        *args: Positional arguments passed to stage_fn.
+        result_check: Optional validation function for partial-result stages.
+        **kwargs: Keyword arguments passed to stage_fn.
 
     Returns:
-        Whatever stage_fn returns, if the stage succeeded (per
-        result_check, when provided). None if the stage raised, or if
-        result_check rejected the return value.
-
-    Raises:
-        Nothing — all exceptions from stage_fn are caught, logged, and
-        recorded in the report as a failed stage. Callers decide whether a
-        failed stage should stop the pipeline (pipeline-critical stages)
-        or simply be skipped (per-symbol stages).
+        The stage result, or None if the stage failed.
     """
     logger.info("--- STAGE START: %s ---", stage_name)
     start_time = time.monotonic()
@@ -138,19 +101,17 @@ def _run_stage(report: PipelineRunReport, stage_name: str, stage_fn, *args, resu
 
 def run_company_stage(report: PipelineRunReport, symbols: list[str]) -> bool:
     """
-    Run the company data stages: fetch (ingestion) -> transform -> load.
+    Run company data stages: fetch, transform, and load.
 
-    This is pipeline-critical: historical_prices and news_articles both
-    have a NOT NULL foreign key to companies (database/tables.sql), so no
-    symbol's price/news data can be loaded if this stage fails.
+    This stage is pipeline-critical because price and news records
+    depend on company IDs in the database.
 
     Args:
-        report: The shared PipelineRunReport to record stage outcomes on.
-        symbols: List of stock ticker symbols whose company data should be
-            fetched, e.g. ["AAPL", "MSFT"].
+        report: Report receiving stage results.
+        symbols: Stock ticker symbols to process.
 
     Returns:
-        True if all three company sub-stages succeeded, False otherwise.
+        True if all company stages succeed.
     """
     fetch_result = _run_stage(
         report, "Fetch company profile/fundamentals", fetch_and_save_companies, symbols
@@ -173,27 +134,16 @@ def run_company_stage(report: PipelineRunReport, symbols: list[str]) -> bool:
 
 def run_symbol_stages(report: PipelineRunReport, symbol: str) -> None:
     """
-    Run the price and news stages for a single symbol: fetch -> transform
-    -> load, for both data types.
+    Run price and news stages for a single symbol.
 
-    Each sub-stage is isolated: if fetching/transforming/loading prices
-    fails for this symbol, news is still attempted, and vice versa. If
-    every sub-stage for this symbol fails, the symbol is simply skipped —
-    the pipeline continues on to the next symbol rather than stopping.
-
-    The transform and load stages use result_check because
-    run_transform_for_symbol()/run_load_for_symbol() (src/etl/) catch
-    their own per-data-type errors internally and return a partial dict
-    rather than raising (see their docstrings: "a key is omitted if that
-    data type failed"). Without checking for the "prices" key explicitly,
-    a silent partial failure inside those calls would be misreported as a
-    successful stage here.
+    Each stage is isolated so a failure in one data type does not
+    prevent processing of the other.
 
     Args:
-        report: The shared PipelineRunReport to record stage outcomes on.
-        symbol: Stock ticker symbol to process, e.g. "AAPL".
+        report: Report receiving stage results.
+        symbol: Stock ticker symbol to process.
     """
-    # --- Prices: fetch -> transform -> load ---
+    # Prices: fetch -> transform -> load.
     price_fetch = _run_stage(
         report, f"Fetch stock prices ({symbol})", fetch_and_save_prices, [symbol]
     )
@@ -214,19 +164,13 @@ def run_symbol_stages(report: PipelineRunReport, symbol: str) -> None:
                 result_check=lambda r: "prices" in r,
             )
 
-    # --- News: fetch -> (clean+transform happens together with prices'
-    #     run_transform_for_symbol call above, since that function handles
-    #     both data types for a symbol in one pass — see
-    #     src/etl/transform_data.py:run_transform_for_symbol) ---
-    # NOTE: fetch_and_save_news is called here as its own logged stage so
-    # the blueprint's "fetch financial news" step is independently visible
-    # and independently fault-isolated, even though its cleaning/transform
-    # is already covered by the single run_transform_for_symbol() call above.
+    # News is fetched separately, while its transform/load is handled
+    # by run_transform_for_symbol() and run_load_for_symbol().
     _run_stage(report, f"Fetch financial news ({symbol})", fetch_and_save_news, [symbol])
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments for standalone script execution."""
+    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
         description=(
             "Run the complete SmartStock data pipeline: ingestion (prices, "
@@ -249,12 +193,11 @@ def parse_args() -> argparse.Namespace:
 
 def _print_summary(report: PipelineRunReport, total_duration: float) -> None:
     """
-    Log a final, human-readable summary of every stage's outcome and the
-    total pipeline execution time.
+    Log the outcome of each stage and total execution time.
 
     Args:
-        report: The completed PipelineRunReport.
-        total_duration: Total wall-clock time for the entire pipeline run, in seconds.
+        report: Completed pipeline report.
+        total_duration: Total pipeline runtime in seconds.
     """
     logger.info("=" * 60)
     logger.info("PIPELINE SUMMARY")
@@ -278,16 +221,16 @@ def _print_summary(report: PipelineRunReport, total_duration: float) -> None:
 
 def run_pipeline(symbols: list[str]) -> PipelineRunReport:
     """
-    Run the full pipeline for a list of symbols: company data first
-    (pipeline-critical), then price + news stages per symbol (fault-isolated
-    per symbol).
+    Run the full pipeline for the provided symbols.
+
+    Company data runs first because price and news records depend on
+    company IDs. Price and news stages then run independently per symbol.
 
     Args:
-        symbols: List of stock ticker symbols to process, e.g. ["AAPL", "MSFT"].
+        symbols: Stock ticker symbols to process.
 
     Returns:
-        A PipelineRunReport describing every stage that ran and whether the
-        overall run succeeded.
+        Report describing stage outcomes and overall status.
     """
     report = PipelineRunReport()
     pipeline_start = time.monotonic()
@@ -318,21 +261,15 @@ def run_pipeline(symbols: list[str]) -> PipelineRunReport:
 
 def main() -> None:
     """
-    Entry point for standalone script execution.
+    Run the pipeline from the command line.
 
-    Symbol resolution: if --symbols is provided, those symbols are used
-    exactly as given. If omitted, symbols are loaded from
-    config/tracked_symbols.txt via src.utils.config.load_tracked_symbols().
-    This keeps `python -m src.pipeline.run_pipeline` (no flags) a
-    complete, runnable default, while `--symbols` continues to work exactly
-    as before for one-off or partial runs.
+    Uses --symbols when provided; otherwise loads symbols from
+    config/tracked_symbols.txt.
 
     Exit codes:
-        0 - every stage succeeded.
-        1 - the pipeline-critical company stage failed (no symbols processed),
-            OR required API keys are missing, OR the default symbols file
-            is missing/empty and no --symbols override was given.
-        2 - the company stage succeeded but at least one per-symbol stage failed.
+        0: All stages succeeded.
+        1: Critical company stage failed or required configuration is missing.
+        2: Company stage succeeded but at least one symbol stage failed.
     """
     if not settings.finnhub_api_key or not settings.twelvedata_api_key or not settings.newsapi_api_key:
         logger.error(
