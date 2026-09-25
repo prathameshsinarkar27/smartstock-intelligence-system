@@ -43,3 +43,5 @@ Thumbs.db
 # Docker
 *.log
 !logs/.gitkeep
+
+sample_symbols

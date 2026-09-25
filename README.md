@@ -229,7 +229,6 @@ Every phase's tests run against mocked database/API boundaries but exercise real
 
 ## Deployment
 
-Documented for two targets in `docs/PHASE_14_SETUP_GUIDE.md`:
 
 1. **AWS EC2** — a single instance running `docker-compose.yml` directly. Full walkthrough: instance sizing, Docker install, deploy, and recommended hardening (reverse proxy + HTTPS, closing the database port, backups).
 2. **Render** — managed Postgres + a Web Service (`app`) + a Background Worker (`scheduler`), with the full `docker-compose.yml` → Render service mapping since Render doesn't run Compose files directly.
