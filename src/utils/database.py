@@ -1,8 +1,7 @@
 """
 database.py
 
-Centralized PostgreSQL connection management for the SmartStock Intelligence
-Platform.
+Centralized PostgreSQL connection management for SmartStock.
 
 Usage:
     from src.utils.database import get_connection
@@ -26,19 +25,11 @@ logger = get_logger(__name__)
 
 
 class DatabaseConnectionError(Exception):
-    """Raised when a connection to PostgreSQL cannot be established."""
+    """Raised when a PostgreSQL connection cannot be established."""
 
 
 def _build_connection() -> Psycopg2Connection:
-    """
-    Open a new raw psycopg2 connection using settings from src.utils.config.
-
-    Returns:
-        A new, open psycopg2 connection.
-
-    Raises:
-        DatabaseConnectionError: If the connection attempt fails.
-    """
+    """Open a PostgreSQL connection using the configured settings."""
     try:
         return psycopg2.connect(
             host=settings.postgres_host,
@@ -60,21 +51,7 @@ def _build_connection() -> Psycopg2Connection:
 @contextmanager
 def get_connection() -> Generator[Psycopg2Connection, None, None]:
     """
-    Context manager that yields an open PostgreSQL connection and guarantees
-    it is closed afterward, committing on success and rolling back on
-    exception.
-
-    Yields:
-        An open psycopg2 connection.
-
-    Raises:
-        DatabaseConnectionError: If the connection cannot be established.
-
-    Example:
-        with get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT * FROM companies;")
-                rows = cur.fetchall()
+    Yield a PostgreSQL connection with automatic commit, rollback, and close.
     """
     conn = _build_connection()
     try:
@@ -89,12 +66,10 @@ def get_connection() -> Generator[Psycopg2Connection, None, None]:
 
 def test_connection() -> bool:
     """
-    Attempt a trivial query to verify the database is reachable and
-    correctly configured. Intended for use in setup verification and the
-    Phase 2 testing guide — not called by application code paths.
+    Verify database connectivity with a simple query.
 
     Returns:
-        True if the connection and a basic query succeed, False otherwise.
+        True if the connection and query succeed, otherwise False.
     """
     try:
         with get_connection() as conn:
@@ -108,8 +83,7 @@ def test_connection() -> bool:
 
 
 if __name__ == "__main__":
-    # Allows running `python -m src.utils.database` as a quick connectivity
-    # check during setup, without needing to write a separate script.
+    # Supports `python -m src.utils.database` for a quick connectivity check.
     if test_connection():
         logger.info("Successfully connected to PostgreSQL database '%s'.", settings.postgres_db)
     else:

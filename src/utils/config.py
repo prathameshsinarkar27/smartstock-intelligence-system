@@ -2,7 +2,6 @@
 config.py
 
 Centralized configuration loader for the SmartStock Intelligence Platform.
-
 """
 
 import os
@@ -11,9 +10,7 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
-# Load variables from a .env file at the project root, if present.
-# This must run before the Settings dataclass below reads any environment
-# variables, so it is called at import time.
+# Load environment variables before Settings is initialized.
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = PROJECT_ROOT / ".env"
 load_dotenv(dotenv_path=ENV_PATH)
@@ -22,51 +19,10 @@ load_dotenv(dotenv_path=ENV_PATH)
 @dataclass(frozen=True)
 class Settings:
     """
-    Immutable settings object holding all environment-driven configuration.
+    Immutable configuration loaded from environment variables.
 
-    Attributes:
-        finnhub_api_key: API key for Finnhub (company profile/fundamentals data).
-        newsapi_api_key: API key for NewsAPI.org (news articles).
-        twelvedata_api_key: API key for Twelve Data (historical stock price data).
-        gemini_api_key: API key for the Gemini API (Google AI Studio),
-            used by the AI Research Assistant (Phase 10).
-        gemini_model: Which Gemini model to call. Configurable rather than
-            hardcoded since available model names change over time and
-            depend on the API key's plan/access — see .env.example for
-            the current default and how to override it.
-        data_raw_dir: Absolute path to the data/raw/ directory.
-        request_timeout_seconds: Default timeout for outbound HTTP requests.
-        postgres_host: PostgreSQL server host.
-        postgres_port: PostgreSQL server port.
-        postgres_db: PostgreSQL database name.
-        postgres_user: PostgreSQL username.
-        postgres_password: PostgreSQL password.
-        tracked_symbols_path: Absolute path to config/tracked_symbols.txt,
-            the pipeline's default symbol list.
-        rag_embed_batch_size: Max texts per Gemini embedContent call in
-            src/rag/embeddings.py. Kept small by default to stay under
-            free-tier rate limits; raise it on a paid tier for fewer,
-            larger calls.
-        rag_embed_inter_batch_delay_seconds: Fixed pause between
-            successful embedding batches, to stay under free-tier
-            requests-per-minute quotas proactively rather than relying
-            solely on 429 retries. 0 disables the pause.
-        rag_embed_max_retries: How many times to retry a single
-            embedding batch after a 429 RESOURCE_EXHAUSTED response
-            before giving up on it.
-        scheduler_daily_time: "HH:MM" (24h) time the daily job (data
-            pipeline + sentiment scoring + ML predictions using the
-            already-trained model) runs, for both
-            src/scheduler/run_scheduler.py (Docker) and the Windows Task
-            Scheduler wrapper scripts.
-        scheduler_weekly_day: Three-letter day name ("mon".."sun") the
-            weekly job (model retraining + evaluation + a fresh
-            prediction pass) runs.
-        scheduler_weekly_time: "HH:MM" (24h) time the weekly job runs.
-        scheduler_timezone: IANA timezone name (e.g. "America/New_York")
-            the above two times are interpreted in. Defaults to UTC so
-            behavior is identical regardless of the host machine's/
-            container's local timezone unless explicitly overridden.
+    API keys, database settings, paths, RAG embedding settings, and
+    scheduler configuration are defined here.
     """
 
     finnhub_api_key: str
@@ -92,30 +48,12 @@ class Settings:
 
 
 def _get_required_env(key: str) -> str:
-    """
-    Read an environment variable, returning an empty string if missing
-    rather than raising immediately.
-
-    Ingestion scripts are responsible for checking that required keys are
-    non-empty before making API calls, so they can produce a clear,
-    actionable error message (see fetch_stock_data.py for the pattern).
-
-    Args:
-        key: The environment variable name to read.
-
-    Returns:
-        The variable's value, or an empty string if not set.
-    """
+    """Read an environment variable or return an empty string."""
     return os.getenv(key, "").strip()
 
 
 def load_settings() -> Settings:
-    """
-    Build and return a Settings object from the current environment.
-
-    Returns:
-        A populated, immutable Settings instance.
-    """
+    """Build a Settings object from the current environment."""
     return Settings(
         finnhub_api_key=_get_required_env("FINNHUB_API_KEY"),
         newsapi_api_key=_get_required_env("NEWSAPI_API_KEY"),
@@ -140,47 +78,20 @@ def load_settings() -> Settings:
     )
 
 
-# Singleton settings instance, imported by other modules as:
-#   from src.utils.config import settings
+# Shared settings instance.
 settings = load_settings()
 
 
 class TrackedSymbolsError(Exception):
-    """Raised when config/tracked_symbols.txt is missing, unreadable, or empty."""
+    """Raised when the tracked symbols file is missing, unreadable, or empty."""
 
 
 def load_tracked_symbols(path: Path | None = None) -> list[str]:
     """
-    Read the default list of tracked stock symbols from a config file
-    (config/tracked_symbols.txt by default).
+    Load unique, uppercase stock symbols from the tracked symbols file.
 
-    Used by src/pipeline/run_pipeline.py as the symbol list when the
-    pipeline is run with no --symbols flag, so the most common case
-    (`python -m src.pipeline.run_pipeline`) doesn't require typing out
-    every symbol on the command line.
-
-    File format: one symbol per line. Blank lines and lines starting with
-    "#" (comments) are ignored. Symbols are trimmed of surrounding
-    whitespace and uppercased. Duplicate symbols (after trimming/
-    uppercasing) are ignored, keeping only the first occurrence, so the
-    file can be organized into commented sector groupings without
-    worrying about accidental repeats across groups.
-
-    Args:
-        path: Path to the symbols file. Defaults to
-            settings.tracked_symbols_path (config/tracked_symbols.txt at
-            the project root).
-
-    Returns:
-        A list of unique, uppercase, trimmed stock ticker symbols, in the
-        order they first appear in the file.
-
-    Raises:
-        TrackedSymbolsError: If the file does not exist, cannot be read,
-            or contains no symbols after filtering out comments/blank
-            lines (an empty or comment-only file is treated the same as a
-            missing one, since either case leaves the pipeline with
-            nothing to process).
+    Blank lines and comments are ignored, and duplicate symbols are removed
+    while preserving their first occurrence.
     """
     symbols_path = path or settings.tracked_symbols_path
 
