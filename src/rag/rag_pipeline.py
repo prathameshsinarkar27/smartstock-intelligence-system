@@ -1,28 +1,13 @@
 """
 rag_pipeline.py
 
-Orchestrates the RAG (Retrieval-Augmented Generation) system: ingesting
-PDF annual reports into the vector store, and answering questions about
-a company using only its own ingested report text.
+Orchestrates the RAG system for ingesting annual reports and answering
+company-specific questions using only retrieved report content.
 
-Ingestion path: src.rag.document_loader (extract + chunk PDF text) ->
-src.rag.embeddings (embed chunks, RETRIEVAL_DOCUMENT task type) ->
-src.rag.vector_store (persist to ChromaDB).
+Ingestion: extract/chunk -> embed -> store in ChromaDB.
+QA: embed question -> similarity search -> generate a grounded answer.
 
-Question-answering path: src.rag.embeddings (embed the question,
-RETRIEVAL_QUERY task type) -> src.rag.vector_store (similarity search,
-scoped to one company) -> src.genai.llm_utils.generate_text() (answer,
-grounded only in the retrieved excerpts).
-
-Responsible-use framing: like the Phase 10 AI Research Assistant, this
-chatbot is constrained by its system instruction to answer only from the
-provided report excerpts (not general knowledge, which could contradict
-what the actual filing says), to say clearly when the excerpts don't
-contain an answer rather than guessing, and to stay factual/informational
-rather than drift into investment advice — a natural risk when a chatbot
-is discussing a company's own risk-factors section.
-
-Usage (from project root, with venv activated):
+Usage:
     python -m src.rag.rag_pipeline ingest-all
     python -m src.rag.rag_pipeline ingest --file data/reports/AAPL_2025_10K.pdf --symbol AAPL
     python -m src.rag.rag_pipeline ask --symbol AAPL --question "What are the main risk factors?"
@@ -66,16 +51,7 @@ Follow these rules strictly:
 
 @dataclass(frozen=True)
 class RAGAnswer:
-    """
-    The result of answer_question().
-
-    Attributes:
-        symbol: The company the question was about.
-        question: The question that was asked.
-        answer: Gemini's answer, grounded in the retrieved excerpts.
-        sources: Deduplicated (source_file, page) dicts for the excerpts
-            that were retrieved, in first-retrieved (most relevant) order.
-    """
+    """Result of a RAG question with its retrieved source references."""
 
     symbol: str
     question: str
@@ -85,17 +61,14 @@ class RAGAnswer:
 
 def build_rag_prompt(question: str, retrieved_chunks: list[RetrievedChunk]) -> str:
     """
-    Build the user-turn prompt for a RAG question: the retrieved excerpts
-    (labeled with their page/source) followed by the question itself.
+    Build the prompt from retrieved report excerpts and the user question.
 
     Args:
-        question: The user's question.
-        retrieved_chunks: Output of src.rag.vector_store.query(), in
-            relevance order.
+        question: User's question.
+        retrieved_chunks: Relevant chunks returned by vector search.
 
     Returns:
-        A prompt string ready to pass to
-        src.genai.llm_utils.generate_text() as `prompt`.
+        Prompt ready for the text generation model.
     """
     lines = ["Report excerpts:", ""]
 
@@ -115,23 +88,19 @@ def build_rag_prompt(question: str, retrieved_chunks: list[RetrievedChunk]) -> s
 
 def answer_question(symbol: str, question: str, top_k: int = DEFAULT_TOP_K) -> RAGAnswer | None:
     """
-    Answer a question about a company using only its ingested report text.
+    Answer a company question using only ingested report content.
 
     Args:
-        symbol: Ticker symbol whose ingested report(s) to search.
-        question: The user's question.
-        top_k: How many excerpts to retrieve and include as context.
+        symbol: Ticker symbol whose reports should be searched.
+        question: User's question.
+        top_k: Number of excerpts to retrieve.
 
     Returns:
-        None if no report chunks have been ingested for this symbol yet
-        (nothing to answer from — the caller should render a "no report
-        uploaded yet" state rather than asking Gemini to answer from
-        nothing). Otherwise a RAGAnswer.
+        RAGAnswer, or None if no report chunks are available.
 
     Raises:
-        LLMConfigError: If GEMINI_API_KEY isn't set.
-        LLMRequestError: If either the embedding call or the answer
-            generation call fails.
+        LLMConfigError: If Gemini is not configured.
+        LLMRequestError: If embedding or generation fails.
     """
     query_embedding = embed_query(question)
     retrieved = query(query_embedding, symbol=symbol, top_k=top_k)
@@ -157,20 +126,18 @@ def answer_question(symbol: str, question: str, top_k: int = DEFAULT_TOP_K) -> R
 
 def ingest_report(pdf_path: Path, symbol: str) -> int:
     """
-    Ingest a single PDF report: extract/chunk its text, embed the
-    chunks, and store them in the vector store.
+    Ingest one PDF by extracting, chunking, embedding, and storing its text.
 
     Args:
         pdf_path: Path to the PDF file.
-        symbol: Ticker symbol this report belongs to.
+        symbol: Ticker symbol associated with the report.
 
     Returns:
-        The number of chunks ingested. 0 if the PDF had no extractable
-        text (logged as a warning by document_loader, not raised).
+        Number of chunks ingested, or 0 if no text was extracted.
 
     Raises:
-        LLMConfigError: If GEMINI_API_KEY isn't set.
-        LLMRequestError: If the embedding call fails.
+        LLMConfigError: If Gemini is not configured.
+        LLMRequestError: If embedding fails.
     """
     chunks = load_report_chunks(pdf_path, symbol)
 
@@ -183,17 +150,13 @@ def ingest_report(pdf_path: Path, symbol: str) -> int:
 
 def ingest_all_reports(reports_dir: Path = DEFAULT_REPORTS_DIR) -> dict[str, int]:
     """
-    Discover and ingest every recognizably-named PDF in a directory (see
-    src.rag.document_loader's module docstring for the filename
-    convention).
+    Discover and ingest all PDFs with recognizable ticker filenames.
 
     Args:
-        reports_dir: Directory to scan for .pdf files.
+        reports_dir: Directory to scan for PDF files.
 
     Returns:
-        A dict mapping each symbol to the total number of chunks ingested
-        for it (a symbol with multiple report files sums across them).
-        Empty dict if no recognizably-named PDFs were found.
+        Mapping of ticker symbols to total ingested chunk counts.
     """
     discovered = discover_reports(reports_dir)
 
@@ -212,7 +175,7 @@ def ingest_all_reports(reports_dir: Path = DEFAULT_REPORTS_DIR) -> dict[str, int
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments for standalone script execution."""
+    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
         description="Ingest PDF annual reports into the vector store, or ask a question about one."
     )
@@ -247,7 +210,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Entry point for standalone script execution."""
+    """Run the selected RAG command."""
     args = parse_args()
 
     if args.command == "ingest":

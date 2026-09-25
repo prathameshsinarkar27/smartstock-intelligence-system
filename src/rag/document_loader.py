@@ -1,25 +1,14 @@
 """
 document_loader.py
 
-Loads PDF annual reports/financial documents from data/reports/ (a
-directory reserved for this purpose since Phase 0's folder structure —
-see .gitignore, which excludes everything in it except .gitkeep, since
-these are user-supplied files, not something this repo ships) and splits
-each one into overlapping text chunks ready for embedding
-(src/rag/embeddings.py) and storage (src/rag/vector_store.py).
+Loads PDF annual reports from data/reports/ and splits extracted text
+into overlapping chunks for embedding and vector-store ingestion.
 
-File naming convention: a report's ticker symbol is inferred from its
-filename's prefix up to the first "_" or "-" or "." character, e.g.:
-    AAPL_2025_10K.pdf        -> "AAPL"
-    MSFT-annual-report.pdf   -> "MSFT"
-    JPM.pdf                  -> "JPM"
-This keeps ingestion a single `python -m src.rag.rag_pipeline ingest-all`
-command with no extra bookkeeping file — you just name the PDF sensibly.
-If a filename doesn't parse to a plausible ticker, that file is skipped
-with a logged warning rather than guessed at.
+Ticker symbols are inferred from the filename prefix before "_", "-", or "."
+(e.g. AAPL_2025_10K.pdf -> AAPL).
 
-Pure text extraction and chunking — no embedding calls, no database or
-vector store access.
+Handles text extraction and chunking only; embeddings and vector-store
+operations are handled by other modules.
 """
 
 import re
@@ -36,36 +25,17 @@ logger = get_logger(__name__)
 
 DEFAULT_REPORTS_DIR = PROJECT_ROOT / "data" / "reports"
 
-# Chosen for financial-document text: large enough to keep a paragraph's
-# context together (important for numbers that reference an antecedent
-# sentence, e.g. "This represents a 12% increase"), with enough overlap
-# that a fact split across a chunk boundary is very unlikely to lose the
-# entire sentence it belongs to.
+# Chunk size preserves paragraph context while remaining suitable for embeddings.
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
 
-# A ticker symbol is 1-5 uppercase letters (this project doesn't track
-# any symbols with digits or longer suffixes — see config/tracked_symbols.txt).
+# Match 1-5 letter ticker symbols followed by a filename separator.
 _SYMBOL_PREFIX_RE = re.compile(r"^([A-Za-z]{1,5})[_\-.]")
 
 
 @dataclass(frozen=True)
 class ReportChunk:
-    """
-    One chunk of extracted, split report text, ready for embedding.
-
-    Attributes:
-        symbol: The ticker symbol this report belongs to (uppercase).
-        source_file: The PDF's filename (not full path — kept short for
-            use as part of a vector store document ID).
-        page: The 1-indexed page number this chunk's text was extracted
-            from. A chunk that spans a page boundary (due to overlap) is
-            attributed to the page its first character came from.
-        chunk_index: This chunk's position within its source page,
-            0-indexed. Combined with symbol/source_file/page, gives a
-            stable, deterministic ID for upserting into the vector store.
-        text: The chunk's text content.
-    """
+    """One extracted report chunk ready for embedding."""
 
     symbol: str
     source_file: str
@@ -76,15 +46,13 @@ class ReportChunk:
 
 def infer_symbol_from_filename(filename: str) -> str | None:
     """
-    Infer a ticker symbol from a report's filename (see module docstring
-    for the naming convention).
+    Infer a ticker symbol from a report filename.
 
     Args:
-        filename: A PDF filename, e.g. "AAPL_2025_10K.pdf".
+        filename: PDF filename, such as "AAPL_2025_10K.pdf".
 
     Returns:
-        The inferred uppercase symbol, or None if the filename doesn't
-        start with a plausible 1-5 letter ticker followed by a separator.
+        Uppercase ticker symbol, or None if the filename is invalid.
     """
     match = _SYMBOL_PREFIX_RE.match(filename)
     if match is None:
@@ -94,17 +62,13 @@ def infer_symbol_from_filename(filename: str) -> str | None:
 
 def discover_reports(reports_dir: Path = DEFAULT_REPORTS_DIR) -> list[tuple[Path, str]]:
     """
-    Find every PDF in `reports_dir` with a filename that parses to a
-    ticker symbol.
+    Find PDFs with recognizable ticker symbols in their filenames.
 
     Args:
-        reports_dir: Directory to scan for .pdf files (non-recursive).
+        reports_dir: Directory to scan for PDF files.
 
     Returns:
-        A list of (pdf_path, symbol) tuples, sorted by filename. PDFs
-        whose filename doesn't parse to a symbol are skipped with a
-        logged warning, not raised — one badly-named file shouldn't stop
-        the rest of the directory from being ingested.
+        Sorted list of (pdf_path, symbol) tuples.
     """
     if not reports_dir.exists():
         logger.warning("Reports directory does not exist: %s", reports_dir)
@@ -126,16 +90,14 @@ def discover_reports(reports_dir: Path = DEFAULT_REPORTS_DIR) -> list[tuple[Path
 
 def _extract_pages(pdf_path: Path) -> list[str]:
     """
-    Extract raw text from every page of a PDF.
+    Extract text from every PDF page.
 
     Args:
         pdf_path: Path to the PDF file.
 
     Returns:
-        A list of strings, one per page, in page order. A page pypdf
-        can't extract text from (e.g. a scanned image with no text
-        layer) contributes an empty string rather than raising, so one
-        unreadable page doesn't block the rest of the document.
+        Page text in document order. Pages with extraction errors return
+        an empty string so other pages can still be processed.
     """
     reader = PdfReader(pdf_path)
     pages = []
@@ -152,19 +114,15 @@ def _extract_pages(pdf_path: Path) -> list[str]:
 
 def load_report_chunks(pdf_path: Path, symbol: str) -> list[ReportChunk]:
     """
-    Extract and chunk a single PDF report's text.
+    Extract and chunk a PDF report.
 
     Args:
         pdf_path: Path to the PDF file.
-        symbol: The ticker symbol this report belongs to (typically from
-            discover_reports(), but can be passed explicitly to override
-            filename-based inference).
+        symbol: Ticker symbol associated with the report.
 
     Returns:
-        A list of ReportChunk, in page then chunk_index order. Empty list
-        if the PDF has no extractable text at all (e.g. entirely scanned
-        images) — logged as a warning, not raised, since a caller
-        ingesting many reports shouldn't have one bad file stop the rest.
+        Report chunks in page and chunk order. Returns an empty list when
+        no extractable text is found.
     """
     splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
     pages = _extract_pages(pdf_path)
