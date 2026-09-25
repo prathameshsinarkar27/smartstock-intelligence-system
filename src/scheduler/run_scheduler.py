@@ -1,26 +1,14 @@
 """
 run_scheduler.py
 
-A long-running process that calls src/scheduler/jobs.py's run_daily_job()
-and run_weekly_job() on a recurring schedule, using APScheduler's
-BlockingScheduler with cron-style triggers.
+Runs daily and weekly SmartStock jobs on a recurring APScheduler schedule.
 
-Schedule times are configurable via environment variables (read through
-src.utils.config.settings, same pattern as Phase 11's RAG rate-limit
-settings) rather than hardcoded, so the same Docker image can run on a
-different schedule per deployment without a code change:
-
-    SCHEDULER_DAILY_TIME=18:00        # HH:MM, 24h
-    SCHEDULER_WEEKLY_DAY=sun          # mon, tue, wed, thu, fri, sat, sun
-    SCHEDULER_WEEKLY_TIME=19:00       # HH:MM, 24h
-    SCHEDULER_TIMEZONE=UTC            # any IANA timezone name
-    SCHEDULER_RUN_ON_STARTUP=false    # if true, also run the daily job
-                                      # once immediately on startup —
-                                      # useful the first time a fresh
-                                      # container starts with an empty
-                                      # database, so you're not waiting
-                                      # until the next scheduled time to
-                                      # see any data.
+Schedule settings are loaded from environment-backed configuration:
+    SCHEDULER_DAILY_TIME=18:00
+    SCHEDULER_WEEKLY_DAY=sun
+    SCHEDULER_WEEKLY_TIME=19:00
+    SCHEDULER_TIMEZONE=UTC
+    SCHEDULER_RUN_ON_STARTUP=false
 
 Usage:
     python -m src.scheduler.run_scheduler
@@ -42,20 +30,17 @@ _WEEKDAY_NAMES = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
 
 def _parse_hh_mm(value: str, setting_name: str) -> tuple[int, int]:
     """
-    Parse a "HH:MM" string into (hour, minute), raising a clear error
-    (rather than a confusing one from APScheduler/CronTrigger) if the
-    configured value is malformed.
+    Parse a 24-hour HH:MM setting.
 
     Args:
-        value: The "HH:MM" string, e.g. "18:00".
-        setting_name: Which setting this came from, for the error
-            message (e.g. "SCHEDULER_DAILY_TIME").
+        value: Configured time string.
+        setting_name: Setting name used in validation errors.
 
     Returns:
-        (hour, minute) as integers.
+        Hour and minute as integers.
 
     Raises:
-        ValueError: If `value` isn't a valid "HH:MM" 24-hour time.
+        ValueError: If the value is not a valid HH:MM time.
     """
     parts = value.split(":")
     if len(parts) != 2:
@@ -73,37 +58,33 @@ def _parse_hh_mm(value: str, setting_name: str) -> tuple[int, int]:
 
 
 def _validate_weekday(value: str, setting_name: str) -> str:
-    """Confirm a configured weekday name is one CronTrigger accepts, with a clear error if not."""
+    """Validate a configured weekday name."""
     if value not in _WEEKDAY_NAMES:
         raise ValueError(f"{setting_name}={value!r} must be one of {sorted(_WEEKDAY_NAMES)}.")
     return value
 
 
 def _run_daily_job_job() -> None:
-    """APScheduler job wrapper — run_daily_job() already catches its own step errors, so this never raises."""
+    """Run the daily job from the APScheduler trigger."""
     logger.info("Scheduled trigger fired: daily job.")
     run_daily_job()
 
 
 def _run_weekly_job_job() -> None:
-    """APScheduler job wrapper — run_weekly_job() already catches its own step errors, so this never raises."""
+    """Run the weekly job from the APScheduler trigger."""
     logger.info("Scheduled trigger fired: weekly job.")
     run_weekly_job()
 
 
 def build_scheduler() -> BlockingScheduler:
     """
-    Construct (but don't start) a BlockingScheduler with the daily and
-    weekly jobs registered per src.utils.config.settings' scheduler_*
-    fields.
+    Build the scheduler with configured daily and weekly jobs.
 
     Returns:
-        A configured BlockingScheduler, not yet started.
+        Configured BlockingScheduler, not yet started.
 
     Raises:
-        ValueError: If any SCHEDULER_* setting is malformed (caught and
-            logged clearly by main() before the process exits, rather
-            than surfacing as an opaque APScheduler stack trace).
+        ValueError: If a scheduler setting is invalid.
     """
     daily_hour, daily_minute = _parse_hh_mm(settings.scheduler_daily_time, "SCHEDULER_DAILY_TIME")
     weekly_day = _validate_weekday(settings.scheduler_weekly_day, "SCHEDULER_WEEKLY_DAY")
@@ -141,11 +122,10 @@ def build_scheduler() -> BlockingScheduler:
 
 def main() -> None:
     """
-    Entry point: build the scheduler, optionally run the daily job once
-    immediately (SCHEDULER_RUN_ON_STARTUP=true), then block forever
-    running jobs at their configured times until interrupted
-    (SIGINT/SIGTERM — including `docker stop`, which BlockingScheduler
-    handles gracefully via its own signal handling).
+    Start the scheduler and optionally run the daily job immediately.
+
+    SCHEDULER_RUN_ON_STARTUP=true runs the daily job once before
+    entering the schedule loop.
     """
     try:
         scheduler = build_scheduler()
