@@ -36,7 +36,7 @@ docs/
 data/raw/*
 data/processed/*
 data/external/*
-data/reports/*
+<!-- data/reports/* -->
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/external/.gitkeep
