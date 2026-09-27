@@ -15,8 +15,8 @@ __pycache__/
 .ipynb_checkpoints/
 
 # Trained models (regenerate via train_model.py; track with Git LFS if needed)
-models/*.pkl
-models/*.joblib
+# models/*.pkl
+# models/*.joblib
 
 # Vector store persistence (regenerate via rag pipeline)
 vector_db/*
