@@ -43,8 +43,8 @@ data/reports/*
 !data/reports/.gitkeep
 vector_db/*
 !vector_db/.gitkeep
-models/*.pkl
-models/*.joblib
+<!-- models/*.pkl
+models/*.joblib -->
 
 # Logs
 logs/*
