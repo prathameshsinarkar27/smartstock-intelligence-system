@@ -28,10 +28,10 @@ EMBEDDING_MODEL = "gemini-embedding-001"
 EMBEDDING_DIMENSIONS = 768
 
 # Keep embedding requests small and predictable.
-_BATCH_SIZE = getattr(settings, "rag_embed_batch_size", 10)
+_BATCH_SIZE = getattr(settings, "rag_embed_batch_size", 5)
 
 # Pause between batches to reduce rate-limit pressure.
-_INTER_BATCH_DELAY_SECONDS = getattr(settings, "rag_embed_inter_batch_delay_seconds", 1.0)
+_INTER_BATCH_DELAY_SECONDS = getattr(settings, "rag_embed_inter_batch_delay_seconds", 2.0)
 
 # Maximum retries for a rate-limited batch.
 _MAX_RETRIES = getattr(settings, "rag_embed_max_retries", 5)

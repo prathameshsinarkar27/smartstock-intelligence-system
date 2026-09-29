@@ -50,7 +50,10 @@ def get_client() -> genai.Client:
                 "GEMINI_API_KEY is not set. Get a free key at "
                 "https://aistudio.google.com/app/apikey and add it to your .env file."
             )
-        _client = genai.Client(api_key=settings.gemini_api_key)
+        _client = genai.Client(
+            api_key=settings.gemini_api_key,
+            http_options=types.HttpOptions(timeout=120_000),
+        )
         logger.info("Initialized Gemini API client (model=%s).", settings.gemini_model)
 
     return _client
